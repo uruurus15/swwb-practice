@@ -140,7 +140,7 @@
   .curve span { position:absolute; bottom:-15px; left:0; right:0; text-align:center; font-size:10px; color:var(--dim); }
   .msg.bad { color:var(--bad); } .msg.ok { color:var(--good); }
 </style>
-<link rel="stylesheet" href="modes.css?v=7">
+<link rel="stylesheet" href="modes.css?v=9">
 </head>
 <body>
 <div id="topbar">
@@ -209,9 +209,9 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=7"></script>
-<script src="game.js?v=7"></script>
-<script src="modes.js?v=7"></script>
+<script src="engine.js?v=9"></script>
+<script src="game.js?v=9"></script>
+<script src="modes.js?v=9"></script>
 <script>
 let S = null, INFO = null;
 const $ = id => document.getElementById(id);
@@ -579,8 +579,8 @@ document.addEventListener('drop', async e => {
 
 async function init() {
   $('status').textContent = '読み込み中…';
-  await SWWB.initEngine('swwb_wasm.wasm');
-  const cards = await (await fetch('data/cards.json')).json();
+  await SWWB.initEngine('swwb_wasm.wasm?v=9');
+  const cards = await (await fetch('data/cards.json?v=9')).json();
   APP = SWWBGame.makeApi(cards);
   INFO = await api('/api/info');
   $('bot').innerHTML = INFO.bots.map(b => `<option value="${esc(b)}">${esc(b === 'heuristic' ? 'ルールベース' : b === 'random' ? 'ランダム' : b)}</option>`).join('');
@@ -690,7 +690,7 @@ $('edSave').onclick = async () => {
   if (!name) { alert('デッキ名を入力してください'); return; }
   if (INFO.decks.some(d => d.custom && d.name === name) && !confirm(`「${name}」を上書き保存します。よろしいですか？`)) return;
   const j = await api('/api/deck/save', {name, class: ED.cls, cards: Object.entries(ED.counts).map(([o, n]) => [+o, n])});
-  if (j) { INFO.decks = j.decks; fillDeckSelects(); edFillLoad(); const d = j.decks.find(x => x.custom && x.name === name); alert(d && d.ready ? '保存しました（対戦に使えます）' : '保存しました（未完成: ' + ((d && d.reason) || '') + '）'); }
+  if (j) { INFO.decks = j.decks; fillDeckSelects(); edFillLoad(); const d = j.decks.find(x => x.custom && x.name === name); if (typeof onDeckSaved === 'function') onDeckSaved(name, !!(d && d.ready)); alert(d && d.ready ? '保存しました（対戦に使えます）' : '保存しました（未完成: ' + ((d && d.reason) || '') + '）'); }
 };
 $('edDelete').onclick = async () => {
   const name = $('edName').value.trim();

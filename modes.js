@@ -11,14 +11,22 @@ const cardOf = oid => byOid()[oid];
 const CLS_COLORS = ['#778', '#3f9c53', '#c9a43a', '#3f6fd0', '#d4762f', '#8a45c4', '#d8d8e8', '#2fb5c4'];
 
 // ---------------- カード詳細（クリックで表示） ----------------
-function showCardPop(c) {
+function showCardPop(c, opt) {
   const el = q$('cardpop');
   const kind = { follower: 'フォロワー', spell: 'スペル', amulet: 'アミュレット' }[c.kind];
   const st = c.kind === 'follower' ? ' ・ ' + c.atk + '/' + c.hp : (c.countdown ? ' ・ カウントダウン' + c.countdown : '');
-  el.innerHTML = '<img src="' + imgUrl(c) + '" alt=""><div><div class="nm">' + esc(c.name) + '</div><div class="tip">' + INFO.classes[c.class] + ' ・ ' + kind + ' ・ コスト' + c.cost + st + (c.enhance ? ' ・ エンハンス' + c.enhance : '') + '</div><div class="tx">' + fmt(c.text) + '</div></div>';
+  const rel = opt && opt.side != null ? (c.related || []).map(cardOf).filter(Boolean) : [];
+  const relHtml = rel.length ? '<div class="sec">関連カード（' + (opt.side === 0 ? '自分' : '相手') + 'の手札・場に出す）</div><div class="relgrid">' + rel.map(r => '<div class="rel"><img data-pop="1" data-oid="' + r.official_id + '" src="' + imgUrl(r) + '" alt="" title="' + esc(r.name) + '"><div class="nm">' + esc(r.name) + '</div><div class="rb"><button data-prel="' + opt.side + ':' + r.official_id + ':hand">手札</button><button data-prel="' + opt.side + ':' + r.official_id + ':board"' + (r.kind === 'spell' ? ' disabled' : '') + '>場</button></div></div>').join('') + '</div>' : '';
+  el.innerHTML = '<button class="popx" title="閉じる">×</button><img src="' + imgUrl(c) + '" alt=""><div><div class="nm">' + esc(c.name) + '</div><div class="tip">' + INFO.classes[c.class] + ' ・ ' + kind + ' ・ コスト' + c.cost + st + (c.enhance ? ' ・ エンハンス' + c.enhance : '') + '</div><div class="tx">' + fmt(c.text) + '</div>' + relHtml + '</div>';
   el.classList.add('on');
 }
-document.addEventListener('click', e => { const el = q$('cardpop'); if (el && el.classList.contains('on') && !e.target.closest('[data-pop]')) el.classList.remove('on'); }, true);
+document.addEventListener('click', e => {
+  const el = q$('cardpop');
+  if (!el || !el.classList.contains('on')) return;
+  const pb = e.target.closest('[data-prel]');
+  if (pb && el.contains(pb)) { const [si, oid, w] = pb.dataset.prel.split(':'); addToSide(+si, +oid, w, { keepSel: true }); return; }
+  if (e.target.closest('.popx') || !(el.contains(e.target) || e.target.closest('[data-pop]'))) el.classList.remove('on');
+}, true);
 
 // ---------------- 共通の部品（見た目は対戦画面と同じ） ----------------
 function unitTile(c, o) {
@@ -119,8 +127,8 @@ function setMode(m) {
   q$('setupView').classList.toggle('on', m === 'setup');
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   q$('status').style.display = m === 'play' ? '' : 'none';
-  q$('drawerTab').style.display = m === 'mull' ? 'none' : '';
-  if (m === 'mull') toggleDrawer(false);
+  q$('drawerTab').style.display = (m === 'mull' || m === 'setup') ? 'none' : '';   // 盤面再現は左にデッキ列がある
+  if (m === 'mull' || m === 'setup') toggleDrawer(false);
   if (m === 'play') { q$('settingsBtn').style.display = ''; if (S) render(); else { q$('status').className = 'wait'; q$('status').textContent = '「設定・新しいゲーム」からゲームを始めてください'; q$('settings').classList.add('open'); } }
   else { q$('settingsBtn').style.display = 'none'; q$('settings').classList.remove('open'); q$('cancelTop').style.display = 'none'; q$('againTop').style.display = 'none'; }
   if (m === 'mull') mullRender();
@@ -215,7 +223,7 @@ function mullRender() {
   v.innerHTML = left + center + right;
   q$('mullDeck').onchange = e => { MULL.deckId = e.target.value; MULL.history = []; MULL.count = 0; MULL.phase = 'idle'; mullRender(); };
   q$('mullFirst').onchange = e => { MULL.first = e.target.value; MULL.phase = 'idle'; mullRender(); };
-  q$('mullEdit').onclick = () => openEditor();
+  q$('mullEdit').onclick = () => { EDIT_FOR = 'mull'; openEditor(); edLoadDeck(MULL.deckId); };
   q$('mullBtn').onclick = mullPrimary;
   v.querySelectorAll('[data-mt]').forEach(el => { el.onclick = () => mullToggle(+el.dataset.mt); el.oncontextmenu = e => { e.preventDefault(); showCardPop(INFO.cards[+el.dataset.cid]); }; });
   v.querySelectorAll('[data-cid][data-pop]').forEach(el => { el.onclick = () => showCardPop(INFO.cards[+el.dataset.cid]); });
@@ -296,16 +304,18 @@ function sideInfoHtml(si) {
     '<span class="chip">墓場 ' + stepper(si + ':shadows', s.shadows) + '</span></div></div>';
 }
 function cardOfDeckClass(si) { try { return APP.decks.resolve(SETUP.decks[si]).class; } catch (e) { return 0; } }
+const relBadge = c => (c.related && c.related.length) ? '<span class="relbadge" title="関連カード（トークンなど）あり。選ぶと右側から出せます">◆</span>' : '';
+function withBadge(html, c) { const b = relBadge(c); return b ? html.replace(/<\/div>$/, b + '</div>') : html; }
 function sideBoardHtml(si) {
   const s = SETUP.sides[si];
   const tag = '<span class="rowtag">' + (si === 0 ? '自分' : '相手') + 'の場 ' + s.board.length + '/5</span>';
-  const units = s.board.map((u, i) => unitTile(cardOf(u.oid), { ...u, cls: (SEL && SEL.w === 'board' && SEL.si === si && SEL.i === i ? ['sel'] : []), attrs: 'data-sel="board:' + si + ':' + i + '"' })).join('');
+  const units = s.board.map((u, i) => withBadge(unitTile(cardOf(u.oid), { ...u, cls: (SEL && SEL.w === 'board' && SEL.si === si && SEL.i === i ? ['sel'] : []), attrs: 'data-sel="board:' + si + ':' + i + '"' }), cardOf(u.oid))).join('');
   return tag + units + (s.board.length < 5 ? slotTile('u', 'data-add="board:' + si + '"') : '');
 }
 function sideHandHtml(si) {
   const s = SETUP.sides[si];
   const tag = '<span class="rowtag">' + (si === 0 ? '自分' : '相手') + 'の手札 ' + s.hand.length + '/9</span>';
-  const tiles = s.hand.map((h, i) => handTile(cardOf(h.oid), { cost: h.cost == null ? null : h.cost, cls: ['playable'].concat(SEL && SEL.w === 'hand' && SEL.si === si && SEL.i === i ? ['sel'] : []), attrs: 'data-sel="hand:' + si + ':' + i + '"' })).join('');
+  const tiles = s.hand.map((h, i) => withBadge(handTile(cardOf(h.oid), { cost: h.cost == null ? null : h.cost, cls: ['playable'].concat(SEL && SEL.w === 'hand' && SEL.si === si && SEL.i === i ? ['sel'] : []), attrs: 'data-sel="hand:' + si + ':' + i + '"' }), cardOf(h.oid))).join('');
   return tag + tiles + (s.hand.length < 9 ? slotTile('h', 'data-add="hand:' + si + '"') : '');
 }
 function editorPanelHtml() {
@@ -317,6 +327,7 @@ function editorPanelHtml() {
   }
   const { x, c } = g, p = SEL.w + ':' + SEL.si + ':' + SEL.i;
   let h = '<img src="' + imgUrl(c) + '" alt="" data-pop="1" data-oid="' + c.official_id + '" style="cursor:pointer"><div class="nm">' + esc(c.name) + '</div><div class="tip">' + INFO.classes[c.class] + ' ・ ' + { follower: 'フォロワー', spell: 'スペル', amulet: 'アミュレット' }[c.kind] + ' ・ コスト' + c.cost + '</div>';
+  h += relatedHtml(c);
   const row = (label, body) => '<div class="erow"><span>' + label + '</span>' + body + '</div>';
   const tg = (f, label) => '<label class="tgl"><input type="checkbox" data-edt="' + f + '"' + (x[f] ? ' checked' : '') + '> ' + label + '</label>';
   const kb = (bit, label) => '<label class="tgl"><input type="checkbox" data-edk="' + bit + '"' + (((x.kw || 0) & bit) ? ' checked' : '') + '> ' + label + '</label>';
@@ -336,37 +347,89 @@ function editorPanelHtml() {
   h += '<div class="tx">' + fmt(c.text) + '</div>';
   return h;
 }
-function setupRender() {
-  ensureDecks();
+/** 関連カード（トークン・生成されるカード）を、選択中のカードと同じ側の手札・場に出すボタン */
+function relatedHtml(c) {
+  const rel = (c.related || []).map(cardOf).filter(Boolean);
+  if (!rel.length) return '';
+  return '<div class="sec">関連カード（トークンなど）</div><div class="relgrid">' + rel.map(r =>
+    '<div class="rel"><img data-pop="1" data-oid="' + r.official_id + '" src="' + imgUrl(r) + '" alt="' + esc(r.name) + '" title="' + esc(r.name) + '"><div class="nm">' + esc(r.name) + '</div><div class="rb"><button data-rel="' + r.official_id + ':hand">手札</button><button data-rel="' + r.official_id + ':board"' + (r.kind === 'spell' ? ' disabled title="スペルは場に置けません"' : '') + '>場</button></div></div>').join('') + '</div>';
+}
+function deckPanelHtml(si) {
   const decks = INFO.decks.filter(d => d.ready);
   const opt = cur => decks.map(d => '<option value="' + esc(d.id) + '"' + (d.id === cur ? ' selected' : '') + '>' + (d.custom ? '★' : '') + INFO.classes[d.class] + '・' + esc(d.name) + '</option>').join('');
+  let rows = '';
+  try {
+    const d = APP.decks.resolve(SETUP.decks[si]), s = SETUP.sides[si];
+    const used = countBy([...s.hand, ...s.board].map(x => x.oid));
+    const list = d.cards.map(([oid, n]) => ({ c: cardOf(oid), n })).filter(x => x.c).sort((a, b) => a.c.cost - b.c.cost || a.c.official_id - b.c.official_id);
+    rows = list.map(({ c, n }) => {
+      const r = n - (used[c.official_id] || 0);
+      return '<div class="dr' + (r <= 0 ? ' zero' : '') + '" data-dc="' + c.official_id + '" data-ds="' + si + '" title="クリックで手札に追加 / 盤面へドラッグ / 右クリックで詳細"><span class="c">' + c.cost + '</span><span class="nm">' + esc(c.name) + '</span>' + (c.related && c.related.length ? '<span class="rb2" title="関連カードあり">◆</span>' : '') + '<span class="n">残り ' + Math.max(r, 0) + '/' + n + '</span></div>';
+    }).join('');
+  } catch (e) { rows = '<span class="tip">' + esc(e.message) + '</span>'; }
+  return '<div class="panel dpanel" data-dside="' + si + '"><div class="dph"><b>' + (si === 0 ? '自分' : '相手') + 'のデッキ</b><span class="tip">手札・場へドラッグ</span></div>' +
+    '<div class="row" style="flex-wrap:nowrap"><select data-dsel="' + si + '" style="min-width:0;flex:1">' + opt(SETUP.decks[si]) + '</select><button data-dedit="' + si + '">編集</button></div><div class="list">' + rows + '</div></div>';
+}
+let FLASH = { t: '', until: 0, timer: null };
+function flashMsg(t) {
+  FLASH.t = t; FLASH.until = Date.now() + 4000;
+  const el = q$('sMsg');
+  if (el) { const f = el.querySelector('.flash'); if (f) f.textContent = t; else el.insertAdjacentHTML('afterbegin', '<div class="flash">' + esc(t) + '</div>'); }
+  clearTimeout(FLASH.timer);
+  FLASH.timer = setTimeout(() => { FLASH.t = ''; const e = q$('sMsg'); const f = e && e.querySelector('.flash'); if (f) f.remove(); }, 4000);
+}
+/** 指定した席の手札・場にカードを足す（ドラッグ・クリック・関連カード共通）。足せたら true。メッセージは画面内に出す */
+function addToSide(si, oid, where, opt) {
+  opt = opt || {};
+  const c = cardOf(oid), s = SETUP.sides[si], who = si === 0 ? '自分' : '相手';
+  if (where === 'board') {
+    if (c.kind === 'spell') { flashMsg('スペルは場に置けません（手札に置いてください）'); return false; }
+    if (s.board.length >= 5) { flashMsg(who + 'の場がいっぱいです（5/5）'); return false; }
+    s.board.push(defaultBoardUnit(c));
+  } else {
+    if (s.hand.length >= 9) { flashMsg(who + 'の手札がいっぱいです（9/9）'); return false; }
+    s.hand.push({ oid, cost: null });
+  }
+  if (!opt.keepSel) SEL = { w: where, si, i: (where === 'hand' ? s.hand : s.board).length - 1 };
+  setupRender(); drawerRender();
+  flashMsg(who + 'の' + (where === 'hand' ? '手札' : '場') + 'に「' + c.name + '」を追加');
+  return true;
+}
+function setupRender() {
+  ensureDecks();
   const saved = GM.lsGet(GM.SETUP_KEY, {});
   const names = Object.keys(saved);
   const bar = '<div class="mbar row">' +
-    '<label class="fld">自分のデッキ <select id="sDeck0">' + opt(SETUP.decks[0]) + '</select></label>' +
-    '<label class="fld">相手のデッキ <select id="sDeck1">' + opt(SETUP.decks[1]) + '</select></label>' +
     '<label class="fld">先攻 <select id="sFirst"><option value="0"' + (SETUP.first === 0 ? ' selected' : '') + '>自分</option><option value="1"' + (SETUP.first === 1 ? ' selected' : '') + '>相手</option></select></label>' +
     '<label class="fld">手番 <select id="sActive"><option value="0"' + (SETUP.active === 0 ? ' selected' : '') + '>自分</option><option value="1"' + (SETUP.active === 1 ? ' selected' : '') + '>相手</option></select></label>' +
-    '<label class="fld">手番の席の <span class="stp"><button data-sn="-1">−</button><b>' + SETUP.n + '</b><button data-sn="1">＋</button></span> ターン目</label></div>';
+    '<label class="fld">手番の席の <span class="stp"><button data-sn="-1">−</button><b>' + SETUP.n + '</b><button data-sn="1">＋</button></span> ターン目</label>' +
+    '<span class="menuwrap"><button id="sMenuBtn">保存・読み込み ▾</button><div id="sMenu" class="panel col-btns"><select id="sLoad"><option value="">保存した盤面…</option>' + names.map(n => '<option>' + esc(n) + '</option>').join('') + '</select>' +
+    '<button id="sSave">保存</button><button id="sDel">削除</button><button id="sExport">コードをコピー</button><button id="sImport">コードを貼り付け</button><button id="sSwap">自分⇔相手 入れ替え</button><button id="sReset">初期化</button></div></span></div>';
   const probs = setupProblems();
-  const left = '<div class="panel" id="sEditor">' + editorPanelHtml() + '</div>';
+  const left = '<div class="dcol">' + deckPanelHtml(1) + deckPanelHtml(0) + '</div>';
   const center = '<div class="mcenter setup">' + sideInfoHtml(1) +
-    '<div class="strip">' + sideHandHtml(1) + '</div>' +
+    '<div class="strip" data-hs="1">' + sideHandHtml(1) + '</div>' +
     '<div class="board" data-bd="1">' + sideBoardHtml(1) + '</div><div class="board" data-bd="0">' + sideBoardHtml(0) + '</div>' +
-    sideInfoHtml(0) + '<div class="hand-row" id="sHand">' + sideHandHtml(0) + '</div></div>';
+    sideInfoHtml(0) + '<div class="hand-row" id="sHand" data-hs="0">' + sideHandHtml(0) + '</div></div>';
+  const flash = FLASH.t && Date.now() < FLASH.until ? '<div class="flash">' + esc(FLASH.t) + '</div>' : '';
   const right = '<div class="mright"><button class="round gold" id="sStart">この盤面で<br>開始</button>' +
-    '<div class="msg" id="sMsg">' + (SETUP_MSG ? '<span style="color:var(--bad)">' + esc(SETUP_MSG) + '</span>' : '') + probs.map(x => '<div class="warn">' + esc(x) + '</div>').join('') + '</div>' +
-    '<div class="panel col-btns"><select id="sLoad"><option value="">保存した盤面…</option>' + names.map(n => '<option>' + esc(n) + '</option>').join('') + '</select>' +
-    '<button id="sSave">保存</button><button id="sDel">削除</button><button id="sExport">コードをコピー</button><button id="sImport">コードを貼り付け</button><button id="sSwap">自分⇔相手 入れ替え</button><button id="sReset">初期化</button></div></div>';
+    '<div class="msg" id="sMsg">' + flash + (SETUP_MSG ? '<span style="color:var(--bad)">' + esc(SETUP_MSG) + '</span>' : '') + probs.map(x => '<div class="warn">' + esc(x) + '</div>').join('') + '</div>' +
+    '<div class="panel" id="sEditor">' + editorPanelHtml() + '</div></div>';
   const v = q$('setupView');
-  v.innerHTML = bar + '<div class="mg">' + left + center + right + '</div>';
+  const keepScroll = [...v.querySelectorAll('.dpanel .list')].map(l => l.scrollTop);
+  v.innerHTML = bar + '<div class="mg setupg">' + left + center + right + '</div>';
+  v.querySelectorAll('.dpanel .list').forEach((l, i) => { l.scrollTop = keepScroll[i] || 0; });
   bindSetup(v);
-  watchRows([q$('sHand'), ...v.querySelectorAll('.strip')]); requestAnimationFrame(() => { fitRow(q$('sHand')); v.querySelectorAll('.strip').forEach(fitRow); });
+  watchRows([q$('sHand'), ...v.querySelectorAll('.strip')]);
+  requestAnimationFrame(() => { fitRow(q$('sHand')); v.querySelectorAll('.strip').forEach(fitRow); });
 }
 function bindSetup(v) {
   const reDefaults = () => { applyDefaults(0); applyDefaults(1); setupRender(); drawerRender(); };
-  q$('sDeck0').onchange = e => { SETUP.decks[0] = e.target.value; setupRender(); drawerRender(); };
-  q$('sDeck1').onchange = e => { SETUP.decks[1] = e.target.value; setupRender(); };
+  v.querySelectorAll('[data-dsel]').forEach(s => s.onchange = () => { SETUP.decks[+s.dataset.dsel] = s.value; setupRender(); drawerRender(); });
+  v.querySelectorAll('[data-dedit]').forEach(b => b.onclick = () => { EDIT_FOR = +b.dataset.dedit; openEditor(); edLoadDeck(SETUP.decks[EDIT_FOR]); });
+  v.querySelectorAll('.dpanel .dr').forEach(r => r.oncontextmenu = e => { e.preventDefault(); showCardPop(cardOf(+r.dataset.dc), { side: +r.dataset.ds }); });
+  q$('sMenuBtn').onclick = e => { e.stopPropagation(); q$('sMenu').classList.toggle('open'); };
+  q$('sMenu').onclick = e => e.stopPropagation();
   q$('sFirst').onchange = e => { SETUP.first = +e.target.value; if (!((SETUP.active === SETUP.first))) { /* 手番はそのまま */ } reDefaults(); };
   q$('sActive').onchange = e => { SETUP.active = +e.target.value; reDefaults(); };
   v.querySelectorAll('[data-sn]').forEach(b => b.onclick = () => { SETUP.n = Math.max(1, Math.min(30, SETUP.n + +b.dataset.sn)); reDefaults(); });
@@ -406,6 +469,7 @@ function bindSetup(v) {
   q$('sReset').onclick = () => { if (confirm('盤面を初期化します。よろしいですか？')) { resetSetup(); setupRender(); drawerRender(); } };
 }
 function bindEditor(v) {
+  v.querySelectorAll('[data-rel]').forEach(b => b.onclick = () => { if (!SEL) return; const [oid, w] = b.dataset.rel.split(':'); addToSide(SEL.si, +oid, w, { keepSel: true }); });
   v.querySelectorAll('[data-deal]').forEach(b => b.onclick = () => dealHand(+b.dataset.deal, Math.max(0, Math.min(9, +q$('dealN').value || 0))));
   v.querySelectorAll('[data-defaults]').forEach(b => b.onclick = () => { applyDefaults(0, true); applyDefaults(1, true); setupRender(); drawerRender(); });
   v.querySelectorAll('[data-edt]').forEach(el => el.onchange = () => editToggle(el.dataset.edt, el.checked));
@@ -440,14 +504,8 @@ function editAction(a) {
   setupRender(); drawerRender();
 }
 function addCard(spec) {
-  const [w, si] = spec.split(':'); const s = SETUP.sides[+si];
-  openPicker((w === 'hand' ? '手札に追加' : '場に追加') + '（' + (+si === 0 ? '自分' : '相手') + '）', c => {
-    if (w === 'hand') { if (s.hand.length < 9) s.hand.push({ oid: c.official_id, cost: null }); }
-    else if (c.kind === 'spell') { alert('スペルは場に置けません'); return false; }
-    else if (s.board.length < 5) s.board.push(defaultBoardUnit(c));
-    SEL = { w, si: +si, i: (w === 'hand' ? s.hand : s.board).length - 1 };
-    setupRender(); drawerRender(); return true;
-  }, { boardOnly: w === 'board', side: +si, keep: w === 'hand' });
+  const [w, si] = spec.split(':');
+  openPicker((w === 'hand' ? '手札に追加' : '場に追加') + '（' + (+si === 0 ? '自分' : '相手') + '）', c => addToSide(+si, c.official_id, w), { boardOnly: w === 'board', side: +si, keep: w === 'hand' });
 }
 function dealHand(si, n) {
   let d;
@@ -465,6 +523,58 @@ function loadSetup(s) {
   SETUP.first = s.first | 0; SETUP.active = s.active | 0; SETUP.n = s.n | 0 || 4; SETUP.sides = s.sides.map(x => ({ dirty: true, ...x })); SEL = null;
   if (s.decks && s.decks.every(d => INFO.decks.some(x => x.id === d && x.ready))) SETUP.decks = s.decks;
   setupRender(); drawerRender();
+}
+
+// ---------------- デッキ一覧からのドラッグ（ポインタイベント。マウスでもタッチでも動く） ----------------
+let DRAG = null;
+let EDIT_FOR = null;   // デッキ編集を開いた画面・席（0/1/'mull'）。保存したら、その席のデッキを保存したものに切り替える
+function dropTarget(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const t = el && el.closest ? el.closest('[data-hs],[data-bd]') : null;
+  if (!t) return null;
+  return { el: t, where: t.dataset.hs != null ? 'hand' : 'board', side: +(t.dataset.hs != null ? t.dataset.hs : t.dataset.bd) };
+}
+function endDrag() {
+  if (!DRAG) return;
+  if (DRAG.ghost) DRAG.ghost.remove();
+  document.querySelectorAll('#setupView .drop, #setupView .drop-hot').forEach(e => e.classList.remove('drop', 'drop-hot'));
+  document.body.classList.remove('dragging');
+  DRAG = null;
+}
+function initSetupDrag() {
+  const root = q$('setupView');
+  root.addEventListener('pointerdown', e => {
+    if (MODE !== 'setup' || e.button !== 0) return;
+    const r = e.target.closest('.dpanel .dr[data-dc]'); if (!r) return;
+    DRAG = { oid: +r.dataset.dc, si: +r.dataset.ds, x: e.clientX, y: e.clientY, moved: false, ghost: null, pid: e.pointerId };
+  });
+  document.addEventListener('pointermove', e => {
+    if (!DRAG || e.pointerId !== DRAG.pid || MODE !== 'setup') return;
+    if (!DRAG.moved) {
+      if (Math.hypot(e.clientX - DRAG.x, e.clientY - DRAG.y) < 6) return;
+      DRAG.moved = true;
+      const g = document.createElement('div'); g.className = 'ghost'; g.innerHTML = '<img src="' + imgUrl(cardOf(DRAG.oid)) + '" alt="">'; document.body.appendChild(g); DRAG.ghost = g;
+      document.body.classList.add('dragging');
+      root.querySelectorAll('[data-hs="' + DRAG.si + '"],[data-bd="' + DRAG.si + '"]').forEach(t => t.classList.add('drop'));
+    }
+    DRAG.ghost.style.left = e.clientX + 'px'; DRAG.ghost.style.top = e.clientY + 'px';
+    root.querySelectorAll('.drop-hot').forEach(t => t.classList.remove('drop-hot'));
+    const t = dropTarget(e.clientX, e.clientY);
+    if (t && t.side === DRAG.si) t.el.classList.add('drop-hot');
+  });
+  document.addEventListener('pointerup', e => {
+    if (!DRAG || e.pointerId !== DRAG.pid) return;
+    const d = DRAG;
+    const t = d.moved ? dropTarget(e.clientX, e.clientY) : null;
+    endDrag();
+    if (MODE !== 'setup') return;
+    if (!d.moved) { addToSide(d.si, d.oid, 'hand'); return; }            // 動かさなければクリック: 手札に追加
+    if (!t) return;
+    if (t.side !== d.si) { const who = d.si === 0 ? '自分' : '相手'; flashMsg(who + 'のデッキのカードは、' + who + 'の手札・場にだけ置けます'); return; }
+    addToSide(d.si, d.oid, t.where);
+  });
+  document.addEventListener('pointercancel', () => endDrag());
+  document.addEventListener('click', () => { if (MODE === 'setup') { const mn = q$('sMenu'); if (mn) mn.classList.remove('open'); } });
 }
 
 // ---------------- カード選択（手札・場への追加） ----------------
@@ -497,6 +607,20 @@ function pickRender() {
   });
 }
 
+// デッキ編集で保存したとき（index.html の保存処理から呼ばれる）: 編集を開いた席のデッキを、保存したデッキに切り替える
+function onDeckSaved(name, ready) {
+  const who = EDIT_FOR;
+  EDIT_FOR = null;
+  if (who === null) return;
+  if (!ready) { if (MODE === 'setup') flashMsg('「' + name + '」は未完成（40枚ではない等）なので、デッキは切り替えていません'); return; }
+  const id = 'c:' + name;
+  if (who === 'mull' && MODE === 'mull') { MULL.deckId = id; MULL.history = []; MULL.count = 0; MULL.phase = 'idle'; mullRender(); }
+  else if ((who === 0 || who === 1) && MODE === 'setup') {
+    SETUP.decks[who] = id; setupRender(); drawerRender();
+    flashMsg((who === 0 ? '自分' : '相手') + 'のデッキを「' + name + '」に切り替えました');
+  }
+}
+
 // ---------------- 初期化 ----------------
 function initModes() {
   const tabs = document.createElement('div'); tabs.className = 'tabs';
@@ -513,6 +637,7 @@ function initModes() {
   pk.innerHTML = '<div class="top"><b id="pickTitle">カードを選ぶ</b><input type="search" id="pickQ" placeholder="カード名・テキスト" size="20"><select id="pickClass"><option value="deck">このデッキ＋中立＋トークン</option><option value="">全クラス</option>' + INFO.classes.map((n, i) => '<option value="' + i + '">' + n + '</option>').join('') + '</select><select id="pickKind"><option value="">全種別</option><option value="follower">フォロワー</option><option value="spell">スペル</option><option value="amulet">アミュレット</option></select><label><input type="checkbox" id="pickTok" checked> トークンも</label><label><input type="checkbox" id="pickRot"> ローテのみ</label><label><input type="checkbox" id="pickKeep"> 続けて追加</label><button id="pickClose">閉じる</button><span class="tip">クリックで追加 / 右クリックで詳細 / デッキのカードが先頭</span></div><div class="body"><div class="pool" id="pickPool"></div></div>';
   q$('pickClose').onclick = () => pk.classList.remove('on');
   ['pickQ', 'pickClass', 'pickKind', 'pickTok', 'pickRot'].forEach(id => { q$(id).oninput = pickRender; q$(id).onchange = pickRender; });
+  initSetupDrag();
   const baseRender = render; render = function () { baseRender(); if (MODE === 'play') drawerRender(); };
   const baseFill = fillDeckSelects;
   fillDeckSelects = function () { baseFill(); if (MODE === 'mull') mullRender(); if (MODE === 'setup') setupRender(); };
