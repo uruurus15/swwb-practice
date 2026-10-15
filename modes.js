@@ -125,7 +125,7 @@ function setMode(m) {
 }
 
 // ---------------- マリガン練習（ゲーム開始時のマリガンだけ） ----------------
-const MULL = { deckId: null, first: '', phase: 'idle', hand0: [], hand1: [], mask: 0, seed: 0, count: 0, history: [], kept: 0 };
+const MULL = { order: [], view: GM.lsGet('swwb.mull.view', 'img'), deckId: null, first: '', phase: 'idle', hand0: [], hand1: [], mask: 0, seed: 0, count: 0, history: [], kept: 0 };
 const mcall = o => SW.call({ slot: 1, ...o });
 function mullDeal() {
   ensureDecks();
@@ -159,6 +159,7 @@ function mullConfirm() {
   mcall({ op: 'step', id: 0 });
   const o = mcall({ op: 'observe', seat: 0 });
   MULL.hand1 = o.my_hand.slice(); MULL.deckSize = o.my_deck_size;
+  MULL.order = mcall({ op: 'deck', seat: 0 });   // 山札の上から（引く順）
   MULL.kept = MULL.hand0.length - popcnt(mask);
   MULL.phase = 'result'; MULL.doneMask = mask;
   MULL.history.unshift({ n: MULL.count, hand0: MULL.hand0.slice(), mask, hand1: MULL.hand1.slice(), first: MULL.goingFirst });
@@ -168,6 +169,15 @@ function mullConfirm() {
 function mullAgain() { mullDeal(); mullRender(); }
 function mullPrimary() { if (MULL.phase === 'choose') mullConfirm(); else mullAgain(); }
 
+/** 山札の並び（上から）。画像つき / 画像なしの一覧を切り替える */
+function deckOrderHtml() {
+  const o = MULL.order, img = MULL.view === 'img';
+  const head = '<div class="dohead"><b>山札（上から ' + o.length + '枚）</b><span class="tip">1枚目が次に引くカード</span><span class="seg"><button data-dview="img"' + (img ? ' class="on"' : '') + '>画像</button><button data-dview="list"' + (!img ? ' class="on"' : '') + '>一覧</button></span></div>';
+  let body;
+  if (img) body = '<div class="dogrid">' + o.map((c, i) => '<div class="dot1" data-pop="1" data-cid="' + c + '"><img loading="lazy" src="' + imgUrl(INFO.cards[c]) + '" alt="' + esc(INFO.cards[c].name) + '"><span class="no">' + (i + 1) + '</span></div>').join('') + '</div>';
+  else body = '<div class="dolist">' + o.map((c, i) => { const k = INFO.cards[c]; return '<div class="dr" data-pop="1" data-cid="' + c + '"><span class="no">' + (i + 1) + '</span><span class="c">' + k.cost + '</span><span class="nm">' + esc(k.name) + '</span></div>'; }).join('') + '</div>';
+  return '<div class="deckorder">' + head + '<div class="dobody">' + body + '</div></div>';
+}
 function mullRender() {
   if (ensureDecks() || MULL.phase === 'idle') mullDeal();
   const v = q$('mullView');
@@ -194,7 +204,7 @@ function mullRender() {
     if (!choose && i >= MULL.kept) { cl.push('new'); tag = '引いた'; tagCls = 'gold'; }
     return handTile(INFO.cards[c], { cls: cl, tag, tagCls, attrs: 'data-mt="' + i + '" data-cid="' + c + '"' });
   }).join('');
-  const center = '<div class="mcenter">' + oppInfo + '<div class="board"><span class="empty">相手の場</span></div><div class="board">' + myBoard + '</div>' + myInfo + '<div class="hand-row" id="mullHand">' + hand + '</div><div class="mprompt">' + prompt + '</div></div>';
+  const center = '<div class="mcenter' + (MULL.phase === 'result' ? ' res' : '') + '">' + oppInfo + '' + (MULL.phase === 'result' ? deckOrderHtml() : '<div class="board"><span class="empty">相手の場</span></div>') + '<div class="board">' + myBoard + '</div>' + myInfo + '<div class="hand-row" id="mullHand">' + hand + '</div>' + (choose ? '<div class="mprompt">' + prompt + '</div>' : '') + '</div>';
   // 右: 丸ボタン + 履歴
   const hist = MULL.history.map(h => '<div><b>#' + h.n + '（' + (h.first ? '先' : '後') + '）</b> ' + h.hand0.map((c, i) => ((h.mask >> i) & 1) ? '<s>' + esc(INFO.cards[c].name) + '</s>' : esc(INFO.cards[c].name)).join('、') + ' <b>→</b> <b>' + h.hand1.map(c => esc(INFO.cards[c].name)).join('、') + '</b></div>').join('') || '<span class="tip">まだありません</span>';
   const right = '<div class="mright"><button class="round" id="mullBtn">' + (choose ? 'マリガン<br>確定' : 'もう一度') + '<small>Enter</small></button><div class="tip" style="text-align:center">' + (choose ? popcnt(MULL.mask) + ' 枚を入れ替え' : '新しいシードで配り直し') + '</div><div class="panel hist" id="mullHist"><div class="tip" style="margin-bottom:4px">履歴（新しい順）</div>' + hist + '</div></div>';
@@ -205,7 +215,9 @@ function mullRender() {
   q$('mullBtn').onclick = mullPrimary;
   v.querySelectorAll('[data-mt]').forEach(el => { el.onclick = () => mullToggle(+el.dataset.mt); el.oncontextmenu = e => { e.preventDefault(); showCardPop(INFO.cards[+el.dataset.cid]); }; });
   v.querySelectorAll('[data-cid][data-pop]').forEach(el => { el.onclick = () => showCardPop(INFO.cards[+el.dataset.cid]); });
-  v.querySelectorAll('.dr').forEach(el => { el.onclick = () => showCardPop(cardOf(+el.dataset.oid)); });
+  v.querySelectorAll('.mdeck .dr').forEach(el => { el.onclick = () => showCardPop(cardOf(+el.dataset.oid)); });
+  v.querySelectorAll('.deckorder [data-cid]').forEach(el => { el.onclick = () => showCardPop(INFO.cards[+el.dataset.cid]); });
+  v.querySelectorAll('[data-dview]').forEach(b => b.onclick = () => { MULL.view = b.dataset.dview; GM.lsSet('swwb.mull.view', MULL.view); mullRender(); });
   requestAnimationFrame(() => fitRow(q$('mullHand')));
 }
 
@@ -483,7 +495,7 @@ function pickRender() {
 
 // ---------------- 初期化 ----------------
 function initModes() {
-  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'modes.css?v=4'; document.head.appendChild(css);
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'modes.css?v=6'; document.head.appendChild(css);
   const tabs = document.createElement('div'); tabs.className = 'tabs';
   tabs.innerHTML = '<button data-mode="play">対戦</button><button data-mode="mull">マリガン練習</button><button data-mode="setup">盤面再現</button>';
   q$('topbar').insertBefore(tabs, q$('status'));

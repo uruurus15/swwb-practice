@@ -98,3 +98,20 @@
 .rowtag { position:absolute; left:8px; top:4px; font-size:11px; color:var(--dim); background:#0a1030b0; border-radius:999px; padding:1px 9px; z-index:2; pointer-events:none; }
 .board, .strip, .hand-row { position:relative; }
 .rowtag + .h { margin-left:0 !important; }
+
+/* 山札の並び（マリガン後） */
+.mcenter.res { grid-template-rows:auto minmax(0,1.7fr) minmax(0,.75fr) auto minmax(0,1.05fr); }
+.deckorder { display:flex; flex-direction:column; min-height:0; background:#ffffff07; border:1px dashed #ffffff12; border-radius:12px; padding:4px 8px; }
+.dohead { display:flex; align-items:center; gap:10px; padding:2px 2px 4px; }
+.dobody { flex:1; min-height:0; overflow:auto; }
+.seg { margin-left:auto; display:inline-flex; }
+.seg button { padding:2px 12px; border-radius:0; }
+.seg button:first-child { border-radius:6px 0 0 6px; } .seg button:last-child { border-radius:0 6px 6px 0; }
+.seg button.on { background:var(--acc); color:#06142b; border-color:var(--acc); font-weight:700; }
+.dogrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(62px,1fr)); gap:6px; padding:4px 2px; }
+.dot1 { position:relative; cursor:pointer; }
+.dot1 img { width:100%; display:block; }
+.dot1 .no { position:absolute; left:-3px; top:-3px; min-width:20px; height:20px; border-radius:10px; background:#000c; border:1px solid var(--gold); color:var(--gold); font-size:11px; font-weight:800; text-align:center; line-height:18px; padding:0 4px; }
+.dot1:hover { outline:2px solid var(--acc); border-radius:6px; }
+.dolist { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:0 14px; }
+.dolist .no { width:24px; text-align:right; color:var(--gold); font-weight:800; font-size:12px; flex:none; }
