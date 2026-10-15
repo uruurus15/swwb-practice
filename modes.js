@@ -75,9 +75,22 @@ function setMode(m) {
   drawerRender();
 }
 
+// 選んでいたデッキが削除された・使えなくなったときは、使える先頭のデッキに戻す
+function ensureDecks() {
+  INFO.decks = APP.decks.listing();   // 最新の一覧（削除・保存を反映）
+  const ready = INFO.decks.filter(d => d.ready);
+  const ok = id => id && ready.some(d => d.id === id);
+  const fb = (ready.find(d => d.id === 'b:0') || ready[0]).id;
+  let changed = false;
+  if (!ok(MULL.deckId)) { MULL.deckId = fb; MULL.phase = 'idle'; MULL.history = []; MULL.count = 0; changed = true; }
+  SETUP.decks = SETUP.decks.map(d => ok(d) ? d : fb);
+  return changed;
+}
+
 // ---------------- マリガン練習 ----------------
 const MULL = { deckId: null, first: '', phase: 'idle', hand0: [], hand1: [], mask: 0, seed: 0, count: 0, history: [] };
 function mullDeal() {
+  ensureDecks();
   const d = APP.decks.resolve(MULL.deckId);
   let seed = Math.floor(Math.random() * 2 ** 31);   // 毎回シードを変える
   const base = { op: 'reset', class0: d.class, cards0: d.cards, class1: d.class, cards1: d.cards };
@@ -124,6 +137,7 @@ function mullTile(cid, cls, i) {
   return '<div class="mc ' + (cls || '') + '" data-pop="1" data-mc="' + (i == null ? '' : i) + '" data-cid="' + cid + '"><img src="' + imgUrl(c) + '" alt="' + esc(c.name) + '"><span class="cost">' + c.cost + '</span></div>';
 }
 function mullRender() {
+  if (ensureDecks() || MULL.phase === 'idle') mullDeal();
   const v = q$('mullView');
   const decks = INFO.decks.filter(d => d.ready);
   const sel = '<select id="mullDeck">' + decks.map(d => '<option value="' + esc(d.id) + '"' + (d.id === MULL.deckId ? ' selected' : '') + '>' + (d.custom ? '★' : '') + INFO.classes[d.class] + '・' + esc(d.name) + '</option>').join('') + '</select>';
@@ -206,8 +220,8 @@ function sideHtml(si) {
   return h;
 }
 function setupRender() {
+  ensureDecks();
   const decks = INFO.decks.filter(d => d.ready);
-  if (!SETUP.decks[0]) SETUP.decks = [decks[0].id, decks[0].id];
   const opt = cur => decks.map(d => '<option value="' + esc(d.id) + '"' + (d.id === cur ? ' selected' : '') + '>' + (d.custom ? '★' : '') + INFO.classes[d.class] + '・' + esc(d.name) + '</option>').join('');
   const saved = GM.lsGet(GM.SETUP_KEY, {});
   const names = Object.keys(saved);
