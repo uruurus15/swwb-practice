@@ -173,6 +173,7 @@
     <button id="endturn">ターン<br>終了<small>Space</small></button>
     <button id="eppbtn" style="display:none"></button>
     <button id="undobtn" title="Ctrl+Z">↶ 一手戻る</button>
+    <button id="restartbtn" style="display:none" title="盤面再現で作った盤面から、新しいシードでやり直す">↺ 盤面を最初から</button>
     <div class="panel" id="log" style="flex:1"></div>
   </div>
 </div>
@@ -313,7 +314,7 @@ function overlayHtml() {
     if (OVHIDE) return '';
     const t = S.result > 0 ? 'あなたの勝ち！' : S.result < 0 ? 'あなたの負け…' : '引き分け';
     const col = S.result > 0 ? 'var(--good)' : S.result < 0 ? 'var(--bad)' : 'var(--dim)';
-    return `<div class="box"><div class="result" style="color:${col}">${t}</div><button class="primary" id="again">もう一度（同じ設定）</button><button id="hideov">盤面を見る</button><button id="openset">設定を開く</button></div>`;
+    return `<div class="box"><div class="result" style="color:${col}">${t}</div><button class="primary" id="again">${APP.game.fromSetup ? '同じ盤面からもう一度' : 'もう一度（同じ設定）'}</button><button id="hideov">盤面を見る</button>${APP.game.fromSetup ? '<button id="backsetup">盤面再現に戻る</button>' : ''}<button id="openset">設定を開く</button></div>`;
   }
   if (!S.mine) return '';
   if (S.pending === 5) {
@@ -414,6 +415,8 @@ function render() {
   } else { st.className = 'wait'; st.textContent = `ターン ${S.turn} ・ 相手の番です`; }
   $('cancelTop').style.display = L(32) ? '' : 'none';
   $('againTop').style.display = S.finished ? '' : 'none';
+  $('againTop').textContent = APP.game.fromSetup ? '同じ盤面から' : 'もう一度';
+  $('restartbtn').style.display = APP.game.fromSetup ? '' : 'none';
   $('botlabel').textContent = '相手: ' + S.bot;
   // 右列
   $('undobtn').disabled = !S.can_undo;
@@ -475,13 +478,15 @@ async function onCard(z, i) {
 }
 
 document.addEventListener('click', async e => {
+  if (typeof MODE !== 'undefined' && MODE !== 'play') return;
   const t = e.target;
   if (t.closest && t.closest('button') && document.activeElement && document.activeElement.tagName === 'BUTTON') setTimeout(() => document.activeElement.blur && document.activeElement.blur(), 0);
   const evo = t.closest('[data-evo]');
   if (evo) { e.stopPropagation(); await send(15 + +evo.dataset.evo); return; }
   const b = t.closest('button[data-id]');
   if (b) { await send(+b.dataset.id); return; }
-  if (t.closest('#again')) { $('new').click(); return; }
+  if (t.closest('#again')) { againGame(); return; }
+  if (t.closest('#backsetup')) { setMode('setup'); return; }
   if (t.closest('#hideov')) { OVHIDE = true; render(); return; }
   if (t.closest('#openset')) { $('settings').classList.add('open'); return; }
   const g = t.closest('[data-grave]');
@@ -505,6 +510,7 @@ document.addEventListener('click', async e => {
   if (S && S.pending === 1 && L(32) && t.closest('#center')) await send(32);
 });
 document.addEventListener('contextmenu', e => {
+  if (typeof MODE !== 'undefined' && MODE !== 'play') return;
   const c = e.target.closest('[data-z]');
   if (c) { e.preventDefault(); setIns(c.dataset.z, +c.dataset.i); render(); }
 });
@@ -517,19 +523,29 @@ document.addEventListener('keydown', e => {
 });
 $('endturn').onclick = endTurn;
 $('eppbtn').onclick = () => send(31);
+// 盤面再現から始めたゲームは、同じ盤面（新しいシード）からやり直す。それ以外は設定パネルの設定で新しいゲーム
+function againGame() {
+  const g = APP.game;
+  if (g.fromSetup) {
+    try { g.start({ ...g.fromSetup, seed: Math.floor(Math.random() * 2 ** 31) }); } catch (e) { alert(e.message); return; }
+    S = g.state(); INS = null; OVHIDE = false; render();
+  } else $('new').click();
+}
 async function undo() {
   if (!S || busy || !S.can_undo) return;
   busy = true;
   try { const j = await api('/api/undo', {}); if (j) { S = j; INS = null; OVHIDE = false; } } finally { busy = false; render(); }
 }
 $('undobtn').onclick = undo;
+$('restartbtn').onclick = () => { if (confirm('この盤面を最初からやり直しますか？')) againGame(); };
 $('cancelTop').onclick = () => send(32);
-$('againTop').onclick = () => $('new').click();
+$('againTop').onclick = () => againGame();
 $('settingsBtn').onclick = e => { e.stopPropagation(); $('settings').classList.toggle('open'); };
 
 // ドラッグ操作: 手札→盤面でプレイ、自分のフォロワー→相手のカード/リーダーで攻撃
 let drag = null;
 document.addEventListener('dragstart', e => {
+  if (typeof MODE !== 'undefined' && MODE !== 'play') return;
   const c = e.target.closest && e.target.closest('[data-z]');
   if (!c) return;
   drag = {z: c.dataset.z, i: +c.dataset.i};
@@ -537,12 +553,14 @@ document.addEventListener('dragstart', e => {
 });
 document.addEventListener('dragend', () => { drag = null; document.querySelectorAll('.board.drop').forEach(x => x.classList.remove('drop')); });
 document.addEventListener('dragover', e => {
+  if (typeof MODE !== 'undefined' && MODE !== 'play') return;
   if (!drag) return;
   const board = e.target.closest('.board'), tgt = e.target.closest('[data-z="opp"],[data-leader="opp"],#oppInfo,#oppBoard');
   if ((drag.z === 'hand' && board) || (drag.z === 'my' && tgt)) { e.preventDefault(); if (board) board.classList.add('drop'); }
 });
 document.addEventListener('dragleave', e => { const b = e.target.closest && e.target.closest('.board'); if (b) b.classList.remove('drop'); });
 document.addEventListener('drop', async e => {
+  if (typeof MODE !== 'undefined' && MODE !== 'play') return;
   if (!drag) return;
   e.preventDefault();
   const d = drag; drag = null;

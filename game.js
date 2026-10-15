@@ -89,6 +89,7 @@
         }
       }
       this.myDeckId = opts.my_deck;
+      this.fromSetup = opts.setup ? { my_deck: opts.my_deck, bot_deck: opts.bot_deck, setup: opts.setup } : null;   // 「同じ盤面からもう一度」用
       this.seed = seed; this.human = 0; this.history = []; this.started = true;
       this.bot = opts.bot || 'heuristic';
       const o = this.obs(0);
