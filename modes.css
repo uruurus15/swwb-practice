@@ -1,0 +1,62 @@
+/* モード切替・マリガン練習・盤面再現・デッキ一覧（端のドロワー）・カード選択 */
+.tabs { display:flex; gap:4px; }
+.tabs button { padding:4px 12px; border-radius:999px; background:transparent; border-color:transparent; color:var(--dim); font-weight:700; }
+.tabs button.on { background:#1d2b57; border-color:var(--acc); color:#fff; }
+#drawerTab { position:fixed; right:0; top:50%; transform:translateY(-50%); z-index:45; writing-mode:vertical-rl; padding:12px 6px; border-radius:10px 0 0 10px; background:#1b2547; border:1px solid var(--line); border-right:none; font-weight:700; letter-spacing:.15em; }
+#drawer { position:fixed; right:0; top:41px; bottom:0; width:274px; z-index:44; background:#0c1330f2; border-left:1px solid var(--line); transform:translateX(100%); transition:transform .15s; display:flex; flex-direction:column; padding:10px 10px 12px; gap:6px; }
+#drawer.open { transform:none; }
+#drawer h3 { margin:0; font-size:14px; color:var(--gold); }
+#drawer .list { flex:1; overflow:auto; min-height:0; }
+.dr { display:flex; align-items:center; gap:6px; padding:3px 4px; border-bottom:1px dotted #ffffff18; cursor:pointer; font-size:13px; }
+.dr:hover { background:#ffffff10; }
+.dr .c { width:22px; height:22px; border-radius:50%; background:#2a8a4c; text-align:center; font-weight:800; font-size:12px; line-height:22px; flex:none; }
+.dr .nm { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dr .n { color:var(--dim); font-variant-numeric:tabular-nums; }
+.dr.hit { background:#58d39b22; } .dr.hit .n { color:var(--good); font-weight:700; }
+.dr.zero { opacity:.35; }
+#cardpop { position:fixed; z-index:60; left:50%; top:50%; transform:translate(-50%,-50%); background:#101733; border:1px solid var(--gold); border-radius:14px; padding:12px; display:none; width:min(560px,94vw); max-height:92vh; overflow:auto; gap:14px; box-shadow:0 10px 40px #000c; }
+#cardpop.on { display:flex; }
+#cardpop img { width:210px; flex:none; align-self:flex-start; }
+#cardpop .nm { font-weight:800; font-size:16px; }
+#cardpop .tx { white-space:pre-line; font-size:13px; line-height:1.55; color:#d6def7; margin-top:6px; }
+.view { flex:1; min-height:0; display:none; overflow:auto; padding:12px 16px; }
+.view.on { display:block; }
+.row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.mc { position:relative; width:clamp(96px,min(13vw,20vh),190px); aspect-ratio:240/310; cursor:pointer; transition:transform .12s; }
+.mc img { width:100%; height:100%; display:block; pointer-events:none; }
+.mc .cost { position:absolute; top:-5px; left:-5px; width:30%; aspect-ratio:1; border-radius:50%; background:#2a8a4c; border:2px solid #fff8; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:clamp(13px,2vw,22px); }
+.mc.mark { transform:translateY(-8px); outline:3px solid var(--bad); }
+.mc.mark::after { content:'入れ替え'; position:absolute; left:50%; bottom:-8px; transform:translateX(-50%); background:var(--bad); color:#fff; font-size:12px; font-weight:800; border-radius:999px; padding:1px 10px; white-space:nowrap; }
+.mc.out img { filter:grayscale(.8) brightness(.55); }
+.mc.out::after { content:'戻した'; position:absolute; left:50%; bottom:-8px; transform:translateX(-50%); background:#555; color:#fff; font-size:12px; font-weight:800; border-radius:999px; padding:1px 10px; white-space:nowrap; }
+.mc.new { outline:3px solid var(--gold); }
+.mc.new::after { content:'引いた'; position:absolute; left:50%; bottom:-8px; transform:translateX(-50%); background:var(--gold); color:#35270a; font-size:12px; font-weight:800; border-radius:999px; padding:1px 10px; white-space:nowrap; }
+.mc.keep { outline:3px solid #58d39b66; }
+.bigbtn { padding:10px 22px; font-size:16px; border-radius:10px; }
+.sec { margin:10px 0 4px; font-weight:700; color:var(--gold); }
+.hist { font-size:12px; color:var(--dim); line-height:1.7; }
+.hist b { color:var(--fg); }
+/* 盤面再現 */
+.sgrid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width:1000px) { .sgrid { grid-template-columns:1fr; } }
+.side-ed { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+.side-ed h3 { margin:0 0 8px; font-size:15px; color:var(--gold); }
+.fld { display:inline-flex; align-items:center; gap:4px; margin:0 10px 6px 0; font-size:13px; }
+.fld input[type=number] { width:56px; font:inherit; color:var(--fg); background:#0e1530; border:1px solid var(--line); border-radius:6px; padding:3px 5px; }
+.chipc { position:relative; display:flex; flex-direction:column; gap:3px; width:108px; background:#0e1530; border:1px solid var(--line); border-radius:8px; padding:4px; font-size:11px; }
+.chipc img { width:100%; border-radius:4px; display:block; cursor:pointer; }
+.chipc .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chipc .x { position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; background:var(--bad); color:#fff; border:none; padding:0; font-size:12px; line-height:20px; }
+.chipc input[type=number] { width:44px; font:inherit; font-size:11px; color:var(--fg); background:#07102a; border:1px solid var(--line); border-radius:4px; padding:1px 3px; }
+.chipc label { display:flex; align-items:center; gap:3px; }
+.chipc .mv { display:flex; gap:3px; }
+.chipc .mv button { padding:0 6px; font-size:11px; }
+#picker { position:fixed; inset:0; z-index:55; background:#070c1e; display:none; flex-direction:column; }
+#picker.on { display:flex; }
+#picker .top { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); background:#0a0f20; }
+#picker .body { flex:1; overflow:auto; padding:12px 16px; }
+#picker .pool { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:8px; }
+#picker .pk { cursor:pointer; position:relative; }
+#picker .pk img { width:100%; display:block; border-radius:6px; }
+#picker .pk:hover { outline:2px solid var(--acc); border-radius:6px; }
+#picker .pk .nm { font-size:11px; text-align:center; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

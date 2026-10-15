@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SWWB 練習ツール</title>
+<style>
+  :root { --bg:#0b1020; --bg2:#141b33; --panel:#171f3acc; --line:#2d3b66; --fg:#eef1fa; --dim:#93a0c4; --acc:#5aa9ff; --gold:#e8c35a; --good:#58d39b; --bad:#ef6b6b; --warn:#e3b341; --atk:#2f7de0; --hp:#d9483f; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:radial-gradient(ellipse at 50% 40%, #1a2650 0%, var(--bg) 70%); color:var(--fg); font:14px/1.4 system-ui,"Hiragino Sans","Yu Gothic UI",sans-serif; display:flex; flex-direction:column; overflow:hidden; }
+  select, button, input[type=text], input[type=search] { font:inherit; color:var(--fg); background:#1b2547; border:1px solid var(--line); border-radius:6px; padding:5px 10px; cursor:pointer; }
+  button:hover:not(:disabled) { border-color:var(--acc); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.act { border-color:var(--acc); color:var(--acc); }
+  button.primary { background:var(--acc); color:#06142b; border-color:var(--acc); font-weight:700; }
+  button.gold { background:linear-gradient(#f6dc86,#d1a43a); color:#35270a; border-color:#f6dc86; font-weight:800; }
+  .tip { color:var(--dim); font-size:12px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 10px; }
+
+  /* ---- 上のバー ---- */
+  #topbar { flex:none; display:flex; gap:10px; align-items:center; padding:5px 12px; background:#0a0f20; border-bottom:1px solid var(--line); min-height:40px; position:relative; z-index:20; }
+  #topbar h1 { font-size:14px; margin:0; color:var(--gold); letter-spacing:.05em; }
+  #status { font-weight:700; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #status.mine { color:var(--acc); } #status.wait { color:var(--dim); } #status.win { color:var(--good); } #status.lose { color:var(--bad); }
+  #settings { position:absolute; top:100%; right:8px; width:min(420px,96vw); display:none; flex-direction:column; gap:8px; padding:12px; background:#101733; border:1px solid var(--line); border-radius:0 0 10px 10px; z-index:40; }
+  #settings.open { display:flex; }
+  #settings label { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+  #settings select { max-width:260px; }
+
+  /* ---- 盤面 ---- */
+  #game { flex:1; min-height:0; display:grid; grid-template-columns:232px minmax(0,1fr) 150px; gap:10px; padding:8px 12px; }
+  @media (max-width:1000px) { #game { grid-template-columns:190px minmax(0,1fr) 110px; } }
+  #left, #right { display:flex; flex-direction:column; gap:8px; min-height:0; }
+  #center { display:grid; grid-template-rows:auto minmax(0,1fr) minmax(0,1fr) auto minmax(0,1.05fr); gap:4px; min-height:0; position:relative; }
+  .info { display:flex; align-items:center; gap:10px; padding:2px 6px; min-height:54px; overflow:hidden; }
+  .info > * { flex:none; } .info > .chips { flex:0 1 auto; min-width:0; }
+  .leader { position:relative; width:64px; height:64px; border-radius:50%; border:3px solid var(--gold); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:18px; color:#fff; text-shadow:0 1px 2px #000; flex:none; background:#556; cursor:default; }
+  .leader .hpb { position:absolute; right:-14px; bottom:-8px; min-width:34px; height:26px; border-radius:13px; background:var(--hp); border:2px solid #fff3; font-size:16px; display:flex; align-items:center; justify-content:center; padding:0 6px; }
+  .info.tgt { background:#ffd85a22; border-radius:12px; cursor:pointer; outline:2px dashed #ffd85a; }
+  .leader.tgt { cursor:pointer; animation:pulse 1s infinite; box-shadow:0 0 0 3px #ffd85a, 0 0 18px #ffd85a; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .chip { background:#ffffff14; border:1px solid var(--line); border-radius:999px; padding:1px 8px; font-size:12px; white-space:nowrap; }
+  .orbs { display:flex; gap:3px; align-items:center; }
+  .orb { width:13px; height:13px; border-radius:50%; background:#2b365e; border:1px solid #5b6ca5; }
+  .orb.on { background:radial-gradient(circle at 35% 30%, #9be7ff, #2f93d8); border-color:#bdeeff; }
+  .dot { width:11px; height:11px; border-radius:50%; background:#2b365e; border:1px solid #5b6ca5; }
+  .dot.ep.on { background:#e8c35a; border-color:#fff3b0; } .dot.sep.on { background:#b77bff; border-color:#ead3ff; }
+  .backs { display:flex; margin-left:6px; } .back { width:16px; height:22px; border-radius:3px; background:linear-gradient(135deg,#3b4f96,#1b2652); border:1px solid #6d82c8; margin-left:-6px; }
+  .board { display:flex; justify-content:center; align-items:center; gap:10px; min-height:0; padding:4px 0; border-radius:12px; background:#ffffff07; border:1px dashed #ffffff12; }
+  .board.drop { background:#5aa9ff22; border-color:var(--acc); }
+  .board .empty { color:#ffffff30; font-size:13px; }
+  .h { position:relative; height:100%; aspect-ratio:240/310; flex:none; user-select:none; }
+  .u { position:relative; height:min(100%,230px); aspect-ratio:1/1.02; flex:none; user-select:none; }
+  .u .art { position:relative; width:100%; height:100%; overflow:hidden; border-radius:18%; background:#26335f; border:2px solid #d9b45b; box-shadow:0 3px 10px #000a; }
+  .u .art img { position:absolute; width:130%; height:auto; left:-15%; top:-26%; border-radius:0; }
+  .h img { width:100%; height:100%; border-radius:0; display:block; object-fit:cover; pointer-events:none; }
+  .u .b { position:absolute; bottom:-4px; width:32%; aspect-ratio:1; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:clamp(13px,2.4vh,22px); color:#fff; text-shadow:0 1px 2px #000,0 0 3px #000; border:2px solid #fff6; }
+  .u .atk { left:-4px; background:var(--atk); } .u .hp { right:-4px; background:var(--hp); }
+  .u .b.up { color:#8dff9f; } .u .b.down { color:#ffd1d1; background:#8d2a28; }
+  .u .cd { position:absolute; bottom:-4px; left:50%; transform:translateX(-50%); min-width:34%; border-radius:999px; background:#6b4bd1; border:2px solid #fff6; text-align:center; font-weight:800; font-size:clamp(12px,2.2vh,20px); padding:0 6px; text-shadow:0 1px 2px #000; }
+  .u .kws { position:absolute; top:3px; left:3px; display:flex; flex-direction:column; gap:2px; }
+  .u .kw { width:18px; height:18px; border-radius:4px; background:#000b; border:1px solid #ffffff55; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .u.ward .art { border-color:#9fb4ff; box-shadow:0 0 0 3px #6f86d8, 0 3px 10px #000a; } .u.evo .art { border-color:#fff1a8; box-shadow:0 0 0 3px #e8c35a, 0 3px 10px #000a; } .u.sevo .art { border-color:#ead3ff; box-shadow:0 0 0 3px #b77bff, 0 0 16px #b77bff; }
+  .u.amulet .art { border-style:dashed; }
+  .u.used .art img { filter:brightness(.6); }
+  .u.can { cursor:pointer; } .u.can .art { box-shadow:0 0 0 3px var(--good), 0 0 14px var(--good); animation:pulseg 1.4s infinite; }
+  .u.tgt, .h.tgt { cursor:pointer; } .u.tgt .art { box-shadow:0 0 0 3px #ffd85a, 0 0 16px #ffd85a; animation:pulse 1s infinite; } .h.tgt { outline:3px solid #ffd85a; outline-offset:1px; animation:pulse 1s infinite; }
+  .u.dim, .h.dim { opacity:.5; }
+  .u.sel .art { box-shadow:0 0 0 3px var(--acc), 0 0 12px var(--acc); } .h.sel { outline:3px solid var(--acc); outline-offset:1px; }
+  .evb { position:absolute; top:-8px; right:-8px; min-width:42px; height:24px; border-radius:12px; background:linear-gradient(#f6dc86,#d1a43a); color:#35270a; font-size:12px; font-weight:800; border:2px solid #fff8; cursor:pointer; padding:0 6px; display:flex; align-items:center; justify-content:center; }
+  @keyframes pulse { 50% { filter:brightness(1.35); } }
+  @keyframes pulseg { 50% { filter:brightness(1.25); } }
+  /* ---- 手札 ---- */
+  #center > * { min-width:0; }
+  #hand { display:flex; justify-content:center; align-items:flex-end; padding:2px 6px 0; min-height:0; width:100%; }
+  .h { cursor:default; margin-left:var(--ov,6px); transition:transform .12s; }
+  .h:first-child { margin-left:0; }
+  .h.playable { cursor:pointer; }
+  .h.playable:hover, .h.sel { transform:translateY(-8%); z-index:5; }
+  .h:not(.playable):not(.tgt):not(.mark-able) { filter:brightness(.62) saturate(.7); }
+  .h.mark { outline:3px solid var(--bad); transform:translateY(-8%); }
+  .h .cost { position:absolute; top:-5px; left:-5px; width:30%; aspect-ratio:1; border-radius:50%; background:#2a8a4c; border:2px solid #fff8; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:clamp(13px,2.5vh,22px); text-shadow:0 1px 2px #000; }
+  .h .cost.enhd { background:#b8892a; box-shadow:0 0 0 2px #ffe08a; }
+  .h .cost.low { background:#1f9d5a; color:#9dffb8; } .h .cost.high { background:#a3352f; color:#ffd6d6; }
+  .h .enh { position:absolute; left:50%; bottom:-6px; transform:translateX(-50%); background:var(--gold); color:#35270a; font-size:11px; font-weight:800; border-radius:999px; padding:0 8px; white-space:nowrap; }
+  .h .gk { position:absolute; top:3px; right:3px; font-size:10px; background:#000b; border-radius:4px; padding:0 4px; }
+  /* ---- 左右 ---- */
+  #detail { flex:1; min-height:0; display:flex; flex-direction:column; gap:6px; overflow:hidden; }
+  #detail img { width:100%; max-height:34vh; object-fit:contain; }
+  #detail .nm { font-weight:700; font-size:15px; }
+  #detail .tx { flex:1; min-height:0; overflow:auto; white-space:pre-line; font-size:12px; color:#cdd6f2; line-height:1.5; }
+  #detail .btns { display:flex; flex-direction:column; gap:6px; }
+  #detail .btns button { text-align:center; }
+  #log { flex:1; min-height:0; overflow:auto; font-size:11.5px; line-height:1.35; }
+  #log div { padding:1px 0; border-bottom:1px dotted #ffffff18; color:#c6cff0; }
+  #endturn { width:112px; height:112px; border-radius:50%; align-self:center; font-size:17px; line-height:1.2; background:radial-gradient(circle at 35% 30%, #6fc4ff, #1c63c9 70%); color:#fff; border:3px solid #cfe8ff; text-shadow:0 1px 3px #0008; box-shadow:0 0 18px #3b8cff88; }
+  #endturn:disabled { filter:grayscale(.7) brightness(.7); box-shadow:none; }
+  #endturn small { display:block; font-size:10px; font-weight:600; opacity:.7; }
+  #eppbtn { width:100%; }
+  /* ---- 案内・重ね表示 ---- */
+  #prompt { position:absolute; left:50%; top:3px; transform:translateX(-50%); z-index:15; display:none; gap:10px; align-items:center; background:#0a1030ee; border:1px solid var(--gold); border-radius:12px; padding:8px 14px; box-shadow:0 4px 24px #000a; }
+  #prompt.on { display:flex; }
+  #prompt span, #prompt button { white-space:nowrap; }
+  #ov { position:fixed; inset:0; z-index:30; background:#000a; display:none; align-items:center; justify-content:center; }
+  #ov.on { display:flex; }
+  #ov .box { background:#101733; border:1px solid var(--gold); border-radius:14px; padding:18px 22px; min-width:320px; max-width:min(640px,94vw); display:flex; flex-direction:column; gap:10px; }
+  #ov .box h2 { margin:0; font-size:16px; color:var(--gold); }
+  #ov .box .tx { font-size:12px; color:#cdd6f2; white-space:pre-line; max-height:26vh; overflow:auto; }
+  #ov .box button { text-align:left; padding:9px 12px; }
+  #ov .result { font-size:34px; font-weight:900; text-align:center; }
+  #gravepop { position:fixed; z-index:35; left:50%; top:50%; transform:translate(-50%,-50%); background:#101733; border:1px solid var(--line); border-radius:12px; padding:14px 18px; display:none; max-width:min(560px,94vw); max-height:70vh; overflow:auto; }
+  #gravepop.on { display:block; }
+</style>
+<style>
+  /* ---- デッキ編集 ---- */
+  .stats { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; }
+  #editor { position:fixed; inset:0; background:var(--bg); z-index:50; display:none; flex-direction:column; }
+  #editor.open { display:flex; }
+  #editor .top { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); background:#0a0f20; }
+  #editor .body { flex:1; min-height:0; display:grid; grid-template-columns: minmax(0,1fr) 340px; gap:12px; padding:12px 16px; }
+  @media (max-width: 860px) { #editor .body { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
+  #editor .col { display:flex; flex-direction:column; min-height:0; gap:8px; }
+  #editor .scroll { overflow:auto; min-height:0; flex:1; }
+  .pool { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:6px; }
+  .pc { border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#141b33; cursor:pointer; display:flex; flex-direction:column; gap:2px; position:relative; }
+  .pc:hover { border-color:var(--acc); }
+  .pc.off { opacity:.4; cursor:not-allowed; }
+  .pc .n { position:absolute; top:4px; right:6px; font-weight:700; color:var(--acc); }
+  .pc .nm { font-weight:600; font-size:13px; padding-right:26px; }
+  .pc .st { color:var(--dim); font-size:11.5px; }
+  .pc .tx { color:var(--dim); font-size:11px; line-height:1.35; max-height:3.9em; overflow:hidden; }
+  .pc img.th { width:100%; border-radius:4px; display:block; }
+  .dl { display:flex; align-items:center; gap:6px; padding:3px 6px; border-bottom:1px dotted var(--line); }
+  .dl .c { width:22px; text-align:center; color:var(--dim); font-variant-numeric:tabular-nums; }
+  .dl .nm { flex:1; }
+  .dl button { padding:0 8px; }
+  .curve { display:flex; gap:3px; align-items:flex-end; height:46px; }
+  .curve div { flex:1; background:var(--acc); min-height:1px; border-radius:2px 2px 0 0; position:relative; }
+  .curve span { position:absolute; bottom:-15px; left:0; right:0; text-align:center; font-size:10px; color:var(--dim); }
+  .msg.bad { color:var(--bad); } .msg.ok { color:var(--good); }
+</style>
+</head>
+<body>
+<div id="topbar">
+  <h1>SWWB 練習ツール</h1>
+  <div id="status" class="wait"></div>
+  <button id="cancelTop" style="display:none">キャンセル (Esc)</button>
+  <button id="againTop" class="primary" style="display:none">もう一度</button>
+  <button id="settingsBtn">設定・新しいゲーム ▾</button>
+  <div id="settings">
+    <label>相手 <select id="bot"></select></label>
+    <label>あなたのデッキ <select id="mydeck"></select></label>
+    <label>相手のデッキ <select id="botdeck"></select></label>
+    <label>手番 <select id="first"><option value="">ランダム</option><option value="1">先攻</option><option value="0">後攻</option></select></label>
+    <div style="display:flex;gap:8px"><button class="primary" id="new" style="flex:1">新しいゲーム</button><button id="editDecks">デッキ編集</button></div>
+    <span class="tip" id="botlabel"></span>
+  </div>
+</div>
+<div id="game">
+  <div id="left">
+    <div class="panel" id="detail"><span class="tip">カードを右クリック（手札は左クリック）で詳細を表示します。</span></div>
+  </div>
+  <div id="center">
+    <div class="info" id="oppInfo"></div>
+    <div class="board" id="oppBoard"></div>
+    <div class="board" id="myBoard"></div>
+    <div class="info" id="myInfo"></div>
+    <div id="hand"></div>
+    <div id="prompt"></div>
+  </div>
+  <div id="right">
+    <button id="endturn">ターン<br>終了<small>Space</small></button>
+    <button id="eppbtn" style="display:none"></button>
+    <button id="undobtn" title="Ctrl+Z">↶ 一手戻る</button>
+    <div class="panel" id="log" style="flex:1"></div>
+  </div>
+</div>
+<div id="ov"></div>
+<div id="gravepop"></div>
+<div id="editor">
+  <div class="top">
+    <b>デッキ編集</b>
+    <label>読み込み <select id="edLoad"></select></label>
+    <label>名前 <input type="text" id="edName" maxlength="40" size="18" placeholder="デッキ名"></label>
+    <label>クラス <select id="edClass"></select></label>
+    <button class="primary" id="edSave">保存</button>
+    <button id="edDelete">削除</button>
+    <button id="edClear">空にする</button>
+    <button id="edClose">閉じる</button>
+    <span class="tip">カードをクリックで +1、右側の − で減らす。保存すると対戦のデッキ選択に出ます。</span>
+  </div>
+  <div class="body">
+    <div class="col">
+      <div class="stats">
+        <input type="search" id="edQ" placeholder="カード名・テキストで検索" size="22">
+        <select id="edKind"><option value="">全種別</option><option value="follower">フォロワー</option><option value="spell">スペル</option><option value="amulet">アミュレット</option></select>
+        <select id="edCost"><option value="">全コスト</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option value="9">9+</option></select>
+        <label><input type="checkbox" id="edRot" checked> ローテーションのみ</label>
+        <label><input type="checkbox" id="edUnimpl"> 未実装も表示</label>
+      </div>
+      <div class="scroll"><div class="pool" id="edPool"></div></div>
+    </div>
+    <div class="col">
+      <div class="panel"><b id="edCount"></b> <span class="msg" id="edMsg"></span><div class="curve" id="edCurve" style="margin:6px 0 18px"></div></div>
+      <div class="scroll panel" id="edList"></div>
+    </div>
+  </div>
+</div>
+<script src="engine.js"></script>
+<script src="game.js"></script>
+<script src="modes.js"></script>
+<script>
+let S = null, INFO = null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt = t => esc(String(t || '').split(' / ').join(String.fromCharCode(10)));
+
+let APP = null;   // makeApi() の結果（api・game・decks）
+async function api(path, body) {
+  const j = await APP.api(path, body);
+  if (j && j.error) { alert(j.error); return null; }
+  return j;
+}
+
+// ---------------- 対戦画面 ----------------
+const KWAB = {'守護':'守','疾走':'疾','突進':'突','必殺':'必','ドレイン':'吸','バリア':'障','潜伏':'潜','オーラ':'オ'};
+const CLS_COL = ['#778','#3f9c53','#c9a43a','#3f6fd0','#d4762f','#8a45c4','#d8d8e8','#2fb5c4'];
+const CLS_AB = ['中','エ','ロ','ウ','ド','ナ','ビ','ネ'];
+let INS = null;          // 詳細表示中のカード {z:'hand'|'my'|'opp', i}
+let LEGAL = new Set();   // いま押せる行動ID
+let busy = false;
+let OVHIDE = false;      // ゲーム終了の表示を閉じて盤面を見る
+const L = id => LEGAL.has(id);
+
+const imgSrc = info => `cardimg/${info.official_id}.webp`;
+const imgTag = info => `<img src="${imgSrc(info)}" alt="${esc(info.name)}" draggable="false" onerror="this.style.visibility='hidden'">`;
+
+async function send(id) {
+  if (busy) return false;
+  busy = true;
+  try {
+    const j = await api('/api/act', {id});
+    if (j) { S = j; return true; }
+    return false;
+  } finally { busy = false; render(); }
+}
+
+function renderLeader(side, p, cls, tgtId) {
+  const tgt = tgtId != null && L(tgtId);
+  return `<div class="leader ${tgt ? 'tgt' : ''}" data-leader="${side}" style="background:radial-gradient(circle at 35% 30%, ${CLS_COL[cls]}, #1a2040)"><span style="font-size:11px">${INFO.classes[cls]}</span><span class="hpb">${p.hp}</span></div>`;
+}
+function orbs(n, on, cls) { let h = ''; for (let k = 0; k < n; k++) h += `<span class="${cls} ${k < on ? 'on' : ''}"></span>`; return h; }
+
+function unitHtml(u, side, i) {
+  const info = INFO.cards[u.card];
+  const bonus = u.super ? 3 : (u.evolved ? 2 : 0);
+  const atkCls = u.atk > info.atk + bonus ? 'up' : (u.atk < info.atk + bonus ? 'down' : '');
+  const hpCls = u.hp < u.max_hp ? 'down' : (u.max_hp > info.hp + bonus ? 'up' : '');
+  const p = S.pending;
+  let cls = ['u'];
+  if (u.amulet) cls.push('amulet');
+  if (u.kw.includes('守護')) cls.push('ward');
+  if (u.super) cls.push('sevo'); else if (u.evolved) cls.push('evo');
+  if (side === 'my') {
+    if (p === 0 && L(10 + i)) cls.push('can');
+    else if (p === 2 && L(20 + i)) cls.push('tgt');
+    else if (p !== 0) cls.push('dim');
+    if (u.attacks && !u.amulet) cls.push('used');
+  } else {
+    if ((p === 1 || p === 2) && L(25 + i)) cls.push('tgt');
+    else if (p === 1 || p === 2) cls.push('dim');
+  }
+  if (INS && INS.z === side && INS.i === i) cls.push('sel');
+  const kws = u.kw.map(k => `<span class="kw" title="${esc(k)}">${KWAB[k] || esc(k[0])}</span>`).join('');
+  const stat = u.amulet ? `<div class="cd">${u.countdown >= 0 ? u.countdown : '∞'}</div>` : `<div class="b atk ${atkCls}">${u.atk}</div><div class="b hp ${hpCls}">${u.hp}</div>`;
+  const evb = side === 'my' && p === 0 && L(15 + i) ? `<button class="evb" data-evo="${i}">進化</button>` : '';
+  const drag = side === 'my' && p === 0 && L(10 + i) && !u.amulet ? 'draggable="true"' : '';
+  return `<div class="${cls.join(' ')}" data-z="${side}" data-i="${i}" ${drag}><div class="art">${imgTag(info)}</div><div class="kws">${kws}</div>${stat}${evb}</div>`;
+}
+
+function handHtml(c, i) {
+  const info = INFO.cards[c.card];
+  const p = S.pending;
+  const cls = ['h'];
+  const playable = p === 0 ? L(1 + i) : (p === 2 || p === 4 || p === 6 ? L(1 + i) : false);
+  if (playable) cls.push('playable');
+  if (p === 2 && playable) cls.push('tgt');
+  if ((p === 4 || p === 6) && playable) cls.push('mark-able');
+  if (c.marked) cls.push('mark');
+  if (INS && INS.z === 'hand' && INS.i === i) cls.push('sel');
+  const pay = c.pay != null ? c.pay : c.cost;            // 実際に支払うコスト（エンハンス発動なら強化後）
+  const costCls = pay < info.cost ? 'low' : (pay > info.cost ? 'high' : '');
+  const enh = c.enhanced ? `<span class="enh">エンハンス</span>` : '';
+  const gk = c.kw.length ? `<span class="gk">${c.kw.map(k => KWAB[k] || k[0]).join('')}</span>` : '';
+  const drag = p === 0 && L(1 + i) ? 'draggable="true"' : '';
+  return `<div class="${cls.join(' ')}" data-z="hand" data-i="${i}" ${drag}>${imgTag(info)}<span class="cost ${costCls}${c.enhanced ? ' enhd' : ''}" title="支払うコスト${pay !== info.cost ? '（元 ' + info.cost + '）' : ''}">${pay}</span>${gk}${enh}</div>`;
+}
+
+function promptHtml() {
+  const p = S.pending, card = S.pending_card ? `（${esc(S.pending_card)}）` : '';
+  const b = (id, label, cls) => L(id) ? `<button class="${cls || 'act'}" data-id="${id}">${esc(label)}</button>` : '';
+  if (!S.mine || S.finished) return '';
+  if (p === 1) return `<span>攻撃対象を選んでください</span>${b(32, 'やめる (Esc)')}`;
+  if (p === 2) return `<span>効果の対象を選んでください${card}</span>`;
+  if (p === 4) return `<span>マリガン: 入れ替えるカードをクリック</span>${b(0, 'マリガン確定', 'primary')}`;
+  if (p === 6) return `<span>融合する素材の手札をクリック（赤枠が選択中）</span>${b(0, '融合を確定', 'primary')}${b(32, 'やめる')}`;
+  return '';
+}
+
+function overlayHtml() {
+  if (S.finished) {
+    if (OVHIDE) return '';
+    const t = S.result > 0 ? 'あなたの勝ち！' : S.result < 0 ? 'あなたの負け…' : '引き分け';
+    const col = S.result > 0 ? 'var(--good)' : S.result < 0 ? 'var(--bad)' : 'var(--dim)';
+    return `<div class="box"><div class="result" style="color:${col}">${t}</div><button class="primary" id="again">もう一度（同じ設定）</button><button id="hideov">盤面を見る</button><button id="openset">設定を開く</button></div>`;
+  }
+  if (!S.mine) return '';
+  if (S.pending === 5) {
+    return `<div class="box"><h2>進化の種類を選んでください</h2>` +
+      [1, 2].filter(L).map(id => `<button class="${id === 2 ? 'gold' : 'primary'}" data-id="${id}">${id === 1 ? '進化（+2/+2）' : '超進化（+3/+3）'}</button>`).join('') +
+      (L(32) ? `<button data-id="32">やめる</button>` : '') + `</div>`;
+  }
+  if (S.pending === 3) {
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8, 9].filter(L);
+    const ci = INFO.cards.find(c => c.name === S.pending_card);
+    return `<div class="box"><h2>モードを選んでください${S.pending_card ? '：' + esc(S.pending_card) : ''}</h2>` +
+      (ci ? `<div class="tx">${fmt(ci.text)}</div>` : '') +
+      ids.map((id, k) => {
+        const m = ci && String(ci.text).match(new RegExp('（' + (k + 1) + '）([^（]*)'));
+        return `<button class="primary" data-id="${id}">${m ? esc('（' + (k + 1) + '）' + m[1].replace(/\s*\/\s*$/, '').trim()) : 'モード ' + (k + 1)}</button>`;
+      }).join('') + `</div>`;
+  }
+  return '';
+}
+
+function detailHtml() {
+  if (!INS) return '<span class="tip">カードを右クリック（手札は左クリック）で詳細を表示します。</span>';
+  let info, extra = '', btns = '';
+  if (INS.z === 'hand') {
+    const c = S.hand[INS.i]; if (!c) return '';
+    info = INFO.cards[c.card];
+    const pay = c.pay != null ? c.pay : c.cost;
+    extra = `コスト ${pay}${pay !== info.cost ? '（元 ' + info.cost + '）' : ''}${c.enhanced ? ' ・エンハンス発動' : ''}`;
+    if (S.pending === 0 && L(1 + INS.i)) btns += `<button class="primary" data-id="${1 + INS.i}">プレイ</button>`;
+    if (S.pending === 0 && L(33 + INS.i)) btns += `<button class="gold" data-id="${33 + INS.i}">融合する</button>`;
+    if (info.enhance) extra += ` ・ エンハンス${info.enhance}（PP${info.enhance}以上で自動）`;
+  } else {
+    const u = (INS.z === 'my' ? S.my_board : S.opp_board)[INS.i]; if (!u) return '';
+    info = INFO.cards[u.card];
+    extra = u.amulet ? `カウントダウン ${u.countdown}` : `${u.atk}/${u.hp}（最大${u.max_hp}）${u.super ? ' ・超進化' : (u.evolved ? ' ・進化' : '')}`;
+    if (u.kw.length) extra += ' ・ ' + u.kw.join(' ');
+    if (INS.z === 'my' && S.pending === 0) {
+      if (L(15 + INS.i)) btns += `<button class="gold" data-id="${15 + INS.i}">進化</button>`;
+      if (L(10 + INS.i)) btns += `<button class="primary" data-id="${10 + INS.i}">${u.amulet ? 'アクト' : '攻撃'}</button>`;
+    }
+  }
+  const kind = {follower:'フォロワー', spell:'スペル', amulet:'アミュレット'}[info.kind];
+  return `${imgTag(info)}<div class="nm">${esc(info.name)}</div><div class="tip">${kind} ・ ${extra}</div><div class="tx">${fmt(info.text)}</div><div class="btns">${btns}</div>`;
+}
+
+function fitHand() {
+  const hand = $('hand'), t = hand.querySelector('.h'), n = S.hand.length;
+  if (!t || n < 2) { hand.style.setProperty('--ov', '8px'); return; }
+  const gap = Math.min(8, (hand.clientWidth - 16 - n * t.offsetWidth) / (n - 1));
+  hand.style.setProperty('--ov', Math.floor(gap) + 'px');
+}
+window.addEventListener('resize', () => { if (S) fitHand(); });
+
+function validateIns() {
+  if (!INS) return;
+  const list = INS.z === 'hand' ? S.hand : (INS.z === 'my' ? S.my_board : S.opp_board);
+  const x = list[INS.i];
+  if (!x || x.card !== INS.c) INS = null;
+}
+function setIns(z, i) {
+  const list = z === 'hand' ? S.hand : (z === 'my' ? S.my_board : S.opp_board);
+  INS = list[i] ? {z, i, c: list[i].card} : null;
+}
+
+function render() {
+  if (!S) return;
+  validateIns();
+  LEGAL = new Set(S.mine ? S.actions.map(a => a.id) : []);
+  const o = S.opp, m = S.my, p = S.pending;
+  const CL = INFO.classes;
+  $('oppInfo').classList.toggle('tgt', L(30));
+  $('oppInfo').innerHTML = `${renderLeader('opp', o, o.class, 30)}${L(30) ? '<button class="gold" data-id="30">▶ 相手リーダー' + (p === 1 ? 'を攻撃' : 'を対象にする') + '</button>' : ''}
+    <div class="chips"><span class="chip">${CL[o.class]}</span><span class="chip">PP 上限 ${o.max_pp}</span>
+      <span class="orbs" title="進化 / 超進化">${orbs(2, o.evo, 'dot ep')}<span style="width:6px"></span>${orbs(2, o.sep, 'dot sep')}</span>
+      ${o.crests.length ? `<span class="chip">クレスト ${esc(o.crests.join(','))}</span>` : ''}</div>
+    <div class="backs" title="相手の手札 ${o.hand} 枚">${'<span class="back"></span>'.repeat(Math.min(o.hand, 10))}</div>
+    <span class="chip">手札 ${o.hand}</span><span class="chip" style="margin-left:auto">山札 ${o.deck}</span><span class="chip" data-grave="opp" style="cursor:pointer">墓地 ${S.opp_grave.length}</span>`;
+  $('oppBoard').innerHTML = S.opp_board.map((u, i) => unitHtml(u, 'opp', i)).join('') || '<span class="empty">相手の場</span>';
+  $('myBoard').innerHTML = S.my_board.map((u, i) => unitHtml(u, 'my', i)).join('') || '<span class="empty">自分の場</span>';
+  const eppLbl = S.actions.find(a => a.id === 31 && p === 0);
+  $('myInfo').innerHTML = `${renderLeader('my', m, m.class, p === 2 ? 31 : null)}
+    <div class="chips"><span class="chip">${CL[m.class]}</span>
+      <span class="orbs" title="PP ${m.pp}/${m.max_pp}">${orbs(Math.max(m.max_pp, 0), m.pp, 'orb')}</span><b>${m.pp}/${m.max_pp}</b>
+      <span class="orbs" title="進化 / 超進化">${orbs(2, m.evo, 'dot ep')}<span style="width:6px"></span>${orbs(2, m.sep, 'dot sep')}</span>
+      ${m.epp ? `<span class="chip" style="border-color:var(--gold)">エクストラPP ${m.epp}${m.epp_active ? '（発動中）' : ''}</span>` : ''}
+      ${m.faith ? `<span class="chip">信仰 ${m.faith}</span>` : ''}${m.crests.length ? `<span class="chip">クレスト ${esc(m.crests.join(','))}</span>` : ''}</div>
+    <span class="chip" style="margin-left:auto">山札 ${m.deck}</span><span class="chip" data-grave="my" style="cursor:pointer">墓地 ${S.my_grave.length}</span>`;
+  const n = S.hand.length;
+  $('hand').innerHTML = S.hand.map(handHtml).join('');
+  fitHand();
+  // 上のバー
+  const st = $('status');
+  if (S.finished) { st.className = S.result > 0 ? 'win' : S.result < 0 ? 'lose' : 'wait'; st.textContent = 'ゲーム終了'; }
+  else if (S.mine) {
+    st.className = 'mine';
+    const msg = {0:'あなたの番です', 1:'攻撃対象を選んでください', 2:'効果の対象を選んでください', 3:'モードを選んでください', 4:'マリガン', 5:'進化の種類を選んでください', 6:'融合の素材を選んでください'}[p];
+    st.textContent = `ターン ${S.turn} ・ ${msg}`;
+  } else { st.className = 'wait'; st.textContent = `ターン ${S.turn} ・ 相手の番です`; }
+  $('cancelTop').style.display = L(32) ? '' : 'none';
+  $('againTop').style.display = S.finished ? '' : 'none';
+  $('botlabel').textContent = '相手: ' + S.bot;
+  // 右列
+  $('undobtn').disabled = !S.can_undo;
+  $('endturn').disabled = !(S.mine && p === 0 && L(0));
+  const epp = $('eppbtn');
+  if (eppLbl) { epp.style.display = ''; epp.textContent = eppLbl.label; } else epp.style.display = 'none';
+  $('log').innerHTML = S.log.map(l => `<div>${esc(l)}</div>`).join('');
+  $('log').scrollTop = 1e9;
+  // 案内・重ね表示・詳細
+  const pr = $('prompt'); const ph = promptHtml(); pr.innerHTML = ph; pr.classList.toggle('on', !!ph);
+  const ov = $('ov'); const oh = overlayHtml(); ov.innerHTML = oh; ov.classList.toggle('on', !!oh);
+  $('detail').innerHTML = detailHtml();
+}
+
+// ---- 操作 ----
+async function endTurn() {
+  if (!S || !S.mine || S.pending !== 0 || !L(0)) return;
+  // まだ出せるカードや攻撃できるフォロワーが残っていたら確認する
+  const plays = S.hand.filter((c, i) => L(1 + i)).length;
+  const atks = S.my_board.filter((u, i) => L(10 + i) && !u.amulet).length;
+  const evos = S.my_board.filter((u, i) => L(15 + i)).length;
+  if (plays || atks || evos) {
+    const parts = [];
+    if (plays) parts.push(`出せるカード ${plays} 枚`);
+    if (atks) parts.push(`攻撃できるフォロワー ${atks} 体`);
+    if (evos) parts.push('進化できるフォロワー');
+    if (!confirm(`まだ ${parts.join('、')} が残っています。ターンを終了しますか？`)) return;
+  }
+  await send(0);
+}
+
+async function onCard(z, i) {
+  if (!S || busy) return;
+  const p = S.pending;
+  if (z === 'hand') {
+    const same = INS && INS.z === 'hand' && INS.i === i;
+    setIns(z, i);
+    if (L(1 + i) && (p !== 0 || same)) { INS = null; await send(1 + i); return; }   // 手札: 1回目=選択、2回目=使う（対象/素材選択中は即決）
+    render(); return;
+  }
+  if (z === 'my') {
+    const u = S.my_board[i];
+    if (p === 2 && L(20 + i)) { await send(20 + i); return; }
+    if (p === 1) { if (L(32)) await send(32); return; }
+    if (p === 0) {
+      const same = INS && INS.z === 'my' && INS.i === i;
+      setIns(z, i);
+      if (L(10 + i)) {
+        if (!u.amulet) { await send(10 + i); return; }                                // フォロワー: クリックで攻撃開始
+        if (same) { await send(10 + i); return; }                                      // アミュレット: 2回目でアクト
+      }
+    }
+    render(); return;
+  }
+  if (z === 'opp') {
+    if ((p === 1 || p === 2) && L(25 + i)) { await send(25 + i); return; }
+    setIns(z, i); render();
+  }
+}
+
+document.addEventListener('click', async e => {
+  const t = e.target;
+  if (t.closest && t.closest('button') && document.activeElement && document.activeElement.tagName === 'BUTTON') setTimeout(() => document.activeElement.blur && document.activeElement.blur(), 0);
+  const evo = t.closest('[data-evo]');
+  if (evo) { e.stopPropagation(); await send(15 + +evo.dataset.evo); return; }
+  const b = t.closest('button[data-id]');
+  if (b) { await send(+b.dataset.id); return; }
+  if (t.closest('#again')) { $('new').click(); return; }
+  if (t.closest('#hideov')) { OVHIDE = true; render(); return; }
+  if (t.closest('#openset')) { $('settings').classList.add('open'); return; }
+  const g = t.closest('[data-grave]');
+  if (g) {
+    const list = g.dataset.grave === 'my' ? S.my_grave : S.opp_grave;
+    $('gravepop').innerHTML = `<b>${g.dataset.grave === 'my' ? '自分' : '相手'}の墓地（${list.length}）</b><div class="tip" style="margin-top:6px">${list.map(esc).join('、') || '—'}</div>`;
+    $('gravepop').classList.add('on'); return;
+  }
+  if (!t.closest('#gravepop')) $('gravepop').classList.remove('on');
+  if (!t.closest('#settings') && !t.closest('#settingsBtn')) $('settings').classList.remove('open');
+  if (S && (S.pending === 1 || S.pending === 2) && L(30) && !t.closest('[data-z]') && (t.closest('#oppInfo') || t.closest('#oppBoard'))) { await send(30); return; }
+  const lead = t.closest('[data-leader]');
+  if (lead && S) {
+    if (lead.dataset.leader === 'opp' && L(30)) await send(30);
+    else if (lead.dataset.leader === 'my' && S.pending === 2 && L(31)) await send(31);
+    return;
+  }
+  const c = t.closest('[data-z]');
+  if (c) { await onCard(c.dataset.z, +c.dataset.i); return; }
+  // 何もない所をクリック: 攻撃選択中ならやめる
+  if (S && S.pending === 1 && L(32) && t.closest('#center')) await send(32);
+});
+document.addEventListener('contextmenu', e => {
+  const c = e.target.closest('[data-z]');
+  if (c) { e.preventDefault(); setIns(c.dataset.z, +c.dataset.i); render(); }
+});
+document.addEventListener('keyup', e => { if (e.code === 'Space' && !e.target.matches('input,select,textarea')) e.preventDefault(); });
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,select,textarea') || $('editor').classList.contains('open') || (typeof MODE !== 'undefined' && MODE !== 'play')) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) endTurn(); }
+  else if (e.key === 'Escape' && S && L(32)) send(32);
+});
+$('endturn').onclick = endTurn;
+$('eppbtn').onclick = () => send(31);
+async function undo() {
+  if (!S || busy || !S.can_undo) return;
+  busy = true;
+  try { const j = await api('/api/undo', {}); if (j) { S = j; INS = null; OVHIDE = false; } } finally { busy = false; render(); }
+}
+$('undobtn').onclick = undo;
+$('cancelTop').onclick = () => send(32);
+$('againTop').onclick = () => $('new').click();
+$('settingsBtn').onclick = e => { e.stopPropagation(); $('settings').classList.toggle('open'); };
+
+// ドラッグ操作: 手札→盤面でプレイ、自分のフォロワー→相手のカード/リーダーで攻撃
+let drag = null;
+document.addEventListener('dragstart', e => {
+  const c = e.target.closest && e.target.closest('[data-z]');
+  if (!c) return;
+  drag = {z: c.dataset.z, i: +c.dataset.i};
+  e.dataTransfer.setData('text/plain', 'x'); e.dataTransfer.effectAllowed = 'move';
+});
+document.addEventListener('dragend', () => { drag = null; document.querySelectorAll('.board.drop').forEach(x => x.classList.remove('drop')); });
+document.addEventListener('dragover', e => {
+  if (!drag) return;
+  const board = e.target.closest('.board'), tgt = e.target.closest('[data-z="opp"],[data-leader="opp"],#oppInfo,#oppBoard');
+  if ((drag.z === 'hand' && board) || (drag.z === 'my' && tgt)) { e.preventDefault(); if (board) board.classList.add('drop'); }
+});
+document.addEventListener('dragleave', e => { const b = e.target.closest && e.target.closest('.board'); if (b) b.classList.remove('drop'); });
+document.addEventListener('drop', async e => {
+  if (!drag) return;
+  e.preventDefault();
+  const d = drag; drag = null;
+  document.querySelectorAll('.board.drop').forEach(x => x.classList.remove('drop'));
+  if (d.z === 'hand' && e.target.closest('.board') && S.pending === 0 && L(1 + d.i)) { INS = null; await send(1 + d.i); return; }
+  if (d.z === 'my' && S.pending === 0 && L(10 + d.i)) {
+    const t = e.target.closest('[data-z="opp"],[data-leader="opp"],#oppInfo,#oppBoard');
+    if (!t) return;
+    if (!(await send(10 + d.i))) return;
+    const id = (t.dataset.z === 'opp') ? 25 + +t.dataset.i : 30;
+    if (L(id)) await send(id);
+    else if (L(32)) await send(32);
+  }
+});
+
+async function init() {
+  $('status').textContent = '読み込み中…';
+  await SWWB.initEngine('swwb_wasm.wasm');
+  const cards = await (await fetch('data/cards.json')).json();
+  APP = SWWBGame.makeApi(cards);
+  INFO = await api('/api/info');
+  $('bot').innerHTML = INFO.bots.map(b => `<option value="${esc(b)}">${esc(b === 'heuristic' ? 'ルールベース' : b === 'random' ? 'ランダム' : b)}</option>`).join('');
+  fillDeckSelects();
+  S = await api('/api/state');
+  initModes();
+}
+function fillDeckSelects() {
+  const CL = INFO.classes;
+  const keep = [$('mydeck').value, $('botdeck').value];
+  const opts = INFO.decks.map(d => `<option value="${esc(d.id)}" ${d.ready ? '' : 'disabled'}>${d.custom ? '★' : ''}${CL[d.class]}・${esc(d.name)}${d.ready ? '' : (d.custom ? '（未完成）' : '（未実装）')}</option>`).join('');
+  $('mydeck').innerHTML = opts; $('botdeck').innerHTML = opts;
+  [['mydeck', keep[0]], ['botdeck', keep[1]]].forEach(([id, v]) => { if (v && INFO.decks.some(d => d.id === v && d.ready)) $(id).value = v; });
+}
+$('new').onclick = async () => {
+  const f = $('first').value;
+  const j = await api('/api/new', {bot: $('bot').value, first: f === '' ? null : f === '1', my_deck: $('mydeck').value, bot_deck: $('botdeck').value});
+  if (j) { S = j; INS = null; OVHIDE = false; $('settings').classList.remove('open'); render(); }
+};
+$('editDecks').onclick = () => { $('settings').classList.remove('open'); openEditor(); };
+
+// ---------------- デッキ編集 ----------------
+const ED = { cls: 2, counts: {} };  // counts: 公式card_id → 枚数
+const byOid = () => { if (!INFO._by) { INFO._by = {}; INFO.cards.forEach(c => INFO._by[c.official_id] = c); } return INFO._by; };
+const edTotal = () => Object.values(ED.counts).reduce((a, b) => a + b, 0);
+function edProblems() {
+  const p = [], by = byOid();
+  const n = edTotal();
+  if (n !== 40) p.push(`${n}/40 枚`);
+  for (const [o, k] of Object.entries(ED.counts)) {
+    const c = by[o];
+    if (!c) { p.push('未知のカード'); continue; }
+    if (k > 3) p.push(`「${c.name}」は3枚まで`);
+    if (c.class !== 0 && c.class !== ED.cls) p.push(`「${c.name}」は他クラス`);
+    if (!c.verified) p.push(`「${c.name}」は未実装`);
+  }
+  return p;
+}
+function edLoadDeck(id) {
+  const d = INFO.decks.find(x => x.id === id); if (!d) return;
+  ED.cls = d.class; ED.counts = {};
+  d.cards.forEach(([o, n]) => ED.counts[o] = n);
+  $('edName').value = d.custom ? d.name : d.name + ' 改';
+  $('edClass').value = ED.cls;
+  edRender();
+}
+function edAdd(oid, delta) {
+  const c = byOid()[oid]; if (!c) return;
+  const cur = ED.counts[oid] || 0, nx = cur + delta;
+  if (nx < 0 || nx > 3) return;
+  if (delta > 0 && edTotal() >= 40) return;
+  if (nx === 0) delete ED.counts[oid]; else ED.counts[oid] = nx;
+  edRender();
+}
+function edRender() {
+  const by = byOid(), q = $('edQ').value.trim().toLowerCase(), kind = $('edKind').value, cost = $('edCost').value;
+  const pool = INFO.cards.filter(c => !c.token && (c.class === 0 || c.class === ED.cls)
+      && ($('edUnimpl').checked || c.verified) && (!$('edRot').checked || c.rot)
+      && (!kind || c.kind === kind) && (cost === '' || (cost === '9' ? c.cost >= 9 : c.cost === +cost))
+      && (!q || (c.name + ' ' + c.text).toLowerCase().includes(q)))
+    .sort((a, b) => a.cost - b.cost || a.official_id - b.official_id);
+  const kn = {follower:'フォロワー', spell:'スペル', amulet:'アミュレット'};
+  $('edPool').innerHTML = pool.map(c => {
+    const n = ED.counts[c.official_id] || 0;
+    const st = c.kind === 'follower' ? `${c.atk}/${c.hp}` : kn[c.kind];
+    return `<div class="pc ${c.verified ? '' : 'off'}" data-o="${c.official_id}" title="${esc(c.text)}"><img class="th" loading="lazy" src="cardimg/${c.official_id}.webp" alt="">${n ?`<span class="n">×${n}</span>` : ''}<div class="nm">${esc(c.name)}</div><div class="st">コスト ${c.cost} ・ ${st}${c.class === 0 ? ' ・中立' : ''}${c.verified ? '' : ' ・未実装'}</div><div class="tx">${esc(c.text)}</div></div>`;
+  }).join('') || '<span class="tip">該当なし</span>';
+  document.querySelectorAll('#edPool .pc').forEach(el => {
+    el.onclick = () => { if (!el.classList.contains('off')) edAdd(+el.dataset.o, 1); };
+    el.oncontextmenu = e => { e.preventDefault(); edAdd(+el.dataset.o, -1); };
+  });
+  const list = Object.entries(ED.counts).map(([o, n]) => [by[o], n]).filter(x => x[0]).sort((a, b) => a[0].cost - b[0].cost || a[0].official_id - b[0].official_id);
+  $('edList').innerHTML = list.map(([c, n]) => `<div class="dl"><span class="c">${c.cost}</span><span class="nm" title="${esc(c.text)}">${esc(c.name)}</span><button data-o="${c.official_id}" data-d="-1">−</button><b>${n}</b><button data-o="${c.official_id}" data-d="1">＋</button></div>`).join('') || '<span class="tip">カードを追加してください</span>';
+  document.querySelectorAll('#edList button').forEach(el => el.onclick = () => edAdd(+el.dataset.o, +el.dataset.d));
+  const probs = edProblems();
+  $('edCount').textContent = `${edTotal()} / 40 枚`;
+  $('edMsg').className = 'msg ' + (probs.length ? 'bad' : 'ok');
+  $('edMsg').textContent = probs.length ? '未完成: ' + probs.slice(0, 3).join('、') : '対戦に使えます';
+  const hist = Array(10).fill(0);
+  list.forEach(([c, n]) => hist[Math.min(c.cost, 9)] += n);
+  const mx = Math.max(1, ...hist);
+  $('edCurve').innerHTML = hist.map((h, i) => `<div style="height:${Math.round(h / mx * 100)}%" title="${h}枚"><span>${i === 9 ? '9+' : i}</span></div>`).join('');
+}
+function edFillLoad() {
+  const CL = INFO.classes;
+  $('edLoad').innerHTML = '<option value="">（選ぶ）</option>' + INFO.decks.map(d => `<option value="${esc(d.id)}">${d.custom ? '★' : ''}${CL[d.class]}・${esc(d.name)}</option>`).join('');
+}
+function openEditor() {
+  $('edClass').innerHTML = INFO.classes.map((n, i) => i ? `<option value="${i}">${n}</option>` : '').join('');
+  $('edClass').value = ED.cls;
+  edFillLoad(); edRender();
+  $('editor').classList.add('open');
+}
+$('edClose').onclick = () => $('editor').classList.remove('open');
+$('edLoad').onchange = () => { if ($('edLoad').value) edLoadDeck($('edLoad').value); $('edLoad').value = ''; };
+$('edClass').onchange = () => {
+  const cls = +$('edClass').value;
+  const lost = Object.keys(ED.counts).filter(o => { const c = byOid()[o]; return c && c.class !== 0 && c.class !== cls; });
+  if (lost.length && !confirm(`クラスを変えると他クラスのカード ${lost.length} 種を外します。よろしいですか？`)) { $('edClass').value = ED.cls; return; }
+  lost.forEach(o => delete ED.counts[o]);
+  ED.cls = cls; edRender();
+};
+$('edClear').onclick = () => { if (!edTotal() || confirm('デッキを空にします。よろしいですか？')) { ED.counts = {}; edRender(); } };
+['edQ', 'edKind', 'edCost', 'edRot', 'edUnimpl'].forEach(id => { $(id).oninput = edRender; $(id).onchange = edRender; });
+$('edSave').onclick = async () => {
+  const name = $('edName').value.trim();
+  if (!name) { alert('デッキ名を入力してください'); return; }
+  if (INFO.decks.some(d => d.custom && d.name === name) && !confirm(`「${name}」を上書き保存します。よろしいですか？`)) return;
+  const j = await api('/api/deck/save', {name, class: ED.cls, cards: Object.entries(ED.counts).map(([o, n]) => [+o, n])});
+  if (j) { INFO.decks = j.decks; fillDeckSelects(); edFillLoad(); const d = j.decks.find(x => x.custom && x.name === name); alert(d && d.ready ? '保存しました（対戦に使えます）' : '保存しました（未完成: ' + ((d && d.reason) || '') + '）'); }
+};
+$('edDelete').onclick = async () => {
+  const name = $('edName').value.trim();
+  if (!INFO.decks.some(d => d.custom && d.name === name)) { alert('その名前の自作デッキはありません'); return; }
+  if (!confirm(`自作デッキ「${name}」を削除します。よろしいですか？`)) return;
+  const j = await api('/api/deck/delete', {name});
+  if (j) { INFO.decks = j.decks; fillDeckSelects(); edFillLoad(); }
+};
+init();
+</script>
+</body>
+</html>
