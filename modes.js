@@ -48,7 +48,11 @@ function leaderOrb(cls, inner, attrs) {
 }
 function orbsHtml(n, on, cls, attr, prefix) { let h = ''; for (let k = 0; k < n; k++) h += '<span class="' + cls + ' ' + (k < on ? 'on' : '') + '" ' + (attr ? attr + '="' + (prefix || '') + k + '"' : '') + '></span>'; return h; }
 function backsHtml(n) { return '<div class="backs">' + '<span class="back"></span>'.repeat(Math.min(n, 10)) + '</div>'; }
+// 手札・手札欄の重なりは、幅が変わるたび（CSS・フォント・画像の読み込み後や画面サイズの変更）に計算し直す
+const FIT_RO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(es => es.forEach(e => fitRow(e.target))) : null;
+function watchRows(rows) { if (!FIT_RO) return; FIT_RO.disconnect(); rows.forEach(r => r && FIT_RO.observe(r)); }
 function fitRow(row) {
+  if (!row || row.clientWidth < 60) return;
   const t = row.querySelector('.h'), n = row.querySelectorAll('.h').length;
   if (!t || n < 2) { row.style.setProperty('--ov', '8px'); return; }
   row.style.setProperty('--ov', Math.floor(Math.min(8, (row.clientWidth - 16 - n * t.offsetWidth) / (n - 1))) + 'px');
@@ -218,7 +222,7 @@ function mullRender() {
   v.querySelectorAll('.mdeck .dr').forEach(el => { el.onclick = () => showCardPop(cardOf(+el.dataset.oid)); });
   v.querySelectorAll('.deckorder [data-cid]').forEach(el => { el.onclick = () => showCardPop(INFO.cards[+el.dataset.cid]); });
   v.querySelectorAll('[data-dview]').forEach(b => b.onclick = () => { MULL.view = b.dataset.dview; GM.lsSet('swwb.mull.view', MULL.view); mullRender(); });
-  requestAnimationFrame(() => fitRow(q$('mullHand')));
+  watchRows([q$('mullHand')]); requestAnimationFrame(() => fitRow(q$('mullHand')));
 }
 
 // ---------------- 盤面再現（対戦画面のまま直接編集） ----------------
@@ -357,7 +361,7 @@ function setupRender() {
   const v = q$('setupView');
   v.innerHTML = bar + '<div class="mg">' + left + center + right + '</div>';
   bindSetup(v);
-  requestAnimationFrame(() => { fitRow(q$('sHand')); v.querySelectorAll('.strip').forEach(fitRow); });
+  watchRows([q$('sHand'), ...v.querySelectorAll('.strip')]); requestAnimationFrame(() => { fitRow(q$('sHand')); v.querySelectorAll('.strip').forEach(fitRow); });
 }
 function bindSetup(v) {
   const reDefaults = () => { applyDefaults(0); applyDefaults(1); setupRender(); drawerRender(); };
@@ -495,7 +499,6 @@ function pickRender() {
 
 // ---------------- 初期化 ----------------
 function initModes() {
-  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'modes.css?v=6'; document.head.appendChild(css);
   const tabs = document.createElement('div'); tabs.className = 'tabs';
   tabs.innerHTML = '<button data-mode="play">対戦</button><button data-mode="mull">マリガン練習</button><button data-mode="setup">盤面再現</button>';
   q$('topbar').insertBefore(tabs, q$('status'));
