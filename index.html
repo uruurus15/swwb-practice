@@ -60,8 +60,16 @@
   .u .b.up { color:#8dff9f; } .u .b.down { color:#ffd1d1; background:#8d2a28; }
   .u .cd { position:absolute; bottom:-4px; left:50%; transform:translateX(-50%); min-width:34%; border-radius:999px; background:#6b4bd1; border:2px solid #fff6; text-align:center; font-weight:800; font-size:clamp(12px,2.2vh,20px); padding:0 6px; text-shadow:0 1px 2px #000; }
   .u .kws { position:absolute; top:3px; left:3px; display:flex; flex-direction:column; gap:2px; }
-  .u .kw { width:18px; height:18px; border-radius:4px; background:#000b; border:1px solid #ffffff55; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
-  .u.ward .art { border-color:#9fb4ff; box-shadow:0 0 0 3px #6f86d8, 0 3px 10px #000a; } .u.evo .art { border-color:#fff1a8; box-shadow:0 0 0 3px #e8c35a, 0 3px 10px #000a; } .u.sevo .art { border-color:#ead3ff; box-shadow:0 0 0 3px #b77bff, 0 0 16px #b77bff; }
+  .k-ward { --kc:#9fb4ff; } .k-storm { --kc:#ffa247; } .k-rush { --kc:#ffd84d; } .k-kill { --kc:#ff6b78; } .k-drain { --kc:#ff86d6; } .k-barrier { --kc:#62e8ff; } .k-stealth { --kc:#b9a6ff; } .k-aura { --kc:#7dffb4; } .k-intim { --kc:#ff8a4a; }
+  .kwt { color:var(--kc); font-weight:800; } .trg { color:#e8c35a; font-weight:700; }
+  .u .kw { width:auto; height:auto; padding:0 4px; line-height:15px; border-radius:4px; background:#000d; border:1px solid var(--kc); color:var(--kc); font-size:11px; font-weight:800; white-space:nowrap; text-shadow:0 1px 2px #000; }
+  .u .evtag { position:absolute; bottom:-7px; left:50%; transform:translateX(-50%); z-index:3; font-size:10px; font-weight:800; padding:0 8px; line-height:16px; border-radius:999px; white-space:nowrap; border:1px solid #fff9; box-shadow:0 1px 4px #000a; }
+  .u.evo .evtag { background:linear-gradient(#ffe58a,#d1a43a); color:#35270a; } .u.sevo .evtag { background:linear-gradient(#c79bff,#7a3fd1); color:#fff; text-shadow:0 1px 2px #0008; }
+  .u.evo .art::after, .u.sevo .art::after { content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; }
+  .u.evo .art::after { background:linear-gradient(160deg,#ffe58a66,transparent 42%,#e8c35a44); }
+  .u.sevo .art::after { background:linear-gradient(160deg,#d9b8ff77,transparent 40%,#8a45ff55); animation:shine 2.2s infinite; }
+  @keyframes shine { 50% { opacity:.55; } }
+  .u.ward .art { border-color:#9fb4ff; box-shadow:0 0 0 3px #6f86d8, 0 3px 10px #000a; } .u.evo .art { border-color:#fff1a8; box-shadow:0 0 0 3px #e8c35a, 0 0 14px #e8c35acc, 0 3px 10px #000a; } .u.sevo .art { border-color:#ead3ff; box-shadow:0 0 0 3px #b77bff, 0 0 20px #b77bff, 0 3px 10px #000a; }
   .u.amulet .art { border-style:dashed; }
   .u.used .art img { filter:brightness(.6); }
   .u.can { cursor:pointer; } .u.can .art { box-shadow:0 0 0 3px var(--good), 0 0 14px var(--good); animation:pulseg 1.4s infinite; }
@@ -140,7 +148,7 @@
   .curve span { position:absolute; bottom:-15px; left:0; right:0; text-align:center; font-size:10px; color:var(--dim); }
   .msg.bad { color:var(--bad); } .msg.ok { color:var(--good); }
 </style>
-<link rel="stylesheet" href="modes.css?v=9">
+<link rel="stylesheet" href="modes.css?v=10">
 </head>
 <body>
 <div id="topbar">
@@ -209,14 +217,17 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=9"></script>
-<script src="game.js?v=9"></script>
-<script src="modes.js?v=9"></script>
+<script src="engine.js?v=10"></script>
+<script src="game.js?v=10"></script>
+<script src="modes.js?v=10"></script>
 <script>
 let S = null, INFO = null;
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const fmt = t => esc(String(t || '').split(' / ').join(String.fromCharCode(10)));
+const KWCLS = {'守護':'ward','疾走':'storm','突進':'rush','必殺':'kill','ドレイン':'drain','バリア':'barrier','潜伏':'stealth','オーラ':'aura','威圧':'intim'};
+// 効果文: 【守護】などの常在能力は能力ごとの色、【ファンファーレ】などの起動条件は金色にする
+const fmt = t => esc(String(t || '').split(' / ').join(String.fromCharCode(10))).replace(/【([^】]*)】/g, (m, k) => KWCLS[k] ? `<span class="kwt k-${KWCLS[k]}">${m}</span>` : `<span class="trg">${m}</span>`);
+const kwChip = k => `<span class="kw k-${KWCLS[k] || 'ward'}" title="${esc(k)}">${esc(k)}</span>`;
 
 let APP = null;   // makeApi() の結果（api・game・decks）
 async function api(path, body) {
@@ -274,11 +285,11 @@ function unitHtml(u, side, i) {
     else if (p === 1 || p === 2) cls.push('dim');
   }
   if (INS && INS.z === side && INS.i === i) cls.push('sel');
-  const kws = u.kw.map(k => `<span class="kw" title="${esc(k)}">${KWAB[k] || esc(k[0])}</span>`).join('');
+  const kws = u.kw.map(kwChip).join('');
   const stat = u.amulet ? `<div class="cd">${u.countdown >= 0 ? u.countdown : '∞'}</div>` : `<div class="b atk ${atkCls}">${u.atk}</div><div class="b hp ${hpCls}">${u.hp}</div>`;
   const evb = side === 'my' && p === 0 && L(15 + i) ? `<button class="evb" data-evo="${i}">進化</button>` : '';
   const drag = side === 'my' && p === 0 && L(10 + i) && !u.amulet ? 'draggable="true"' : '';
-  return `<div class="${cls.join(' ')}" data-z="${side}" data-i="${i}" ${drag}><div class="art">${imgTag(info)}</div><div class="kws">${kws}</div>${stat}${evb}</div>`;
+  return `<div class="${cls.join(' ')}" data-z="${side}" data-i="${i}" ${drag}><div class="art">${imgTag(info)}</div><div class="kws">${kws}</div>${stat}${u.super ? '<span class="evtag">超進化</span>' : (u.evolved ? '<span class="evtag">進化</span>' : '')}${evb}</div>`;
 }
 
 function handHtml(c, i) {
@@ -351,7 +362,7 @@ function detailHtml() {
     const u = (INS.z === 'my' ? S.my_board : S.opp_board)[INS.i]; if (!u) return '';
     info = INFO.cards[u.card];
     extra = u.amulet ? `カウントダウン ${u.countdown}` : `${u.atk}/${u.hp}（最大${u.max_hp}）${u.super ? ' ・超進化' : (u.evolved ? ' ・進化' : '')}`;
-    if (u.kw.length) extra += ' ・ ' + u.kw.join(' ');
+    if (u.kw.length) extra += ' ・ ' + u.kw.map(k => `<span class="kwt k-${KWCLS[k] || 'ward'}">${esc(k)}</span>`).join(' ');
     if (INS.z === 'my' && S.pending === 0) {
       if (L(15 + INS.i)) btns += `<button class="gold" data-id="${15 + INS.i}">進化</button>`;
       if (L(10 + INS.i)) btns += `<button class="primary" data-id="${10 + INS.i}">${u.amulet ? 'アクト' : '攻撃'}</button>`;
@@ -579,8 +590,8 @@ document.addEventListener('drop', async e => {
 
 async function init() {
   $('status').textContent = '読み込み中…';
-  await SWWB.initEngine('swwb_wasm.wasm?v=9');
-  const cards = await (await fetch('data/cards.json?v=9')).json();
+  await SWWB.initEngine('swwb_wasm.wasm?v=10');
+  const cards = await (await fetch('data/cards.json?v=10')).json();
   APP = SWWBGame.makeApi(cards);
   INFO = await api('/api/info');
   $('bot').innerHTML = INFO.bots.map(b => `<option value="${esc(b)}">${esc(b === 'heuristic' ? 'ルールベース' : b === 'random' ? 'ランダム' : b)}</option>`).join('');

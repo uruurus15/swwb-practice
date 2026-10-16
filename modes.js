@@ -33,7 +33,8 @@ function unitTile(c, o) {
   const bonus = o.super_evolved ? 3 : (o.evolved ? 2 : 0);
   const amu = c.kind === 'amulet';
   const bits = (c.kw | 0) | (o.kw | 0);
-  const kws = GM.kwNames(bits).map(k => '<span class="kw" title="' + esc(k) + '">' + (KWAB[k] || esc(k[0])) + '</span>').join('');
+  const kws = GM.kwNames(bits).map(kwChip).join('');
+  const evtag = amu ? '' : (o.super_evolved ? '<span class="evtag">超進化</span>' : (o.evolved ? '<span class="evtag">進化</span>' : ''));
   const cls = ['u'];
   if (amu) cls.push('amulet');
   if (bits & 1) cls.push('ward');
@@ -42,7 +43,7 @@ function unitTile(c, o) {
   const atkCls = o.atk > c.atk + bonus ? 'up' : (o.atk < c.atk + bonus ? 'down' : '');
   const hpCls = o.hp < o.max_hp ? 'down' : (o.max_hp > c.hp + bonus ? 'up' : '');
   const stat = amu ? '<div class="cd">' + o.countdown + '</div>' : '<div class="b atk ' + atkCls + '">' + o.atk + '</div><div class="b hp ' + hpCls + '">' + o.hp + '</div>';
-  return '<div class="' + cls.join(' ') + '" ' + (o.attrs || '') + '><div class="art"><img src="' + imgUrl(c) + '" alt="' + esc(c.name) + '" draggable="false"></div><div class="kws">' + kws + '</div>' + stat + '</div>';
+  return '<div class="' + cls.join(' ') + '" ' + (o.attrs || '') + '><div class="art"><img src="' + imgUrl(c) + '" alt="' + esc(c.name) + '" draggable="false"></div><div class="kws">' + kws + '</div>' + stat + evtag + '</div>';
 }
 function handTile(c, o) {
   const cost = o.cost != null ? o.cost : c.cost;
@@ -305,23 +306,28 @@ function sideInfoHtml(si) {
 }
 function cardOfDeckClass(si) { try { return APP.decks.resolve(SETUP.decks[si]).class; } catch (e) { return 0; } }
 const relBadge = c => (c.related && c.related.length) ? '<span class="relbadge" title="関連カード（トークンなど）あり。選ぶと右側から出せます">◆</span>' : '';
-function withBadge(html, c) { const b = relBadge(c); return b ? html.replace(/<\/div>$/, b + '</div>') : html; }
+function withBadge(html, c, del) {
+  const x = del ? '<button class="xdel" data-del="' + del + '" title="このカードを消す（選択中は Delete キーでも）">×</button>' : '';
+  const b = relBadge(c) + x;
+  return b ? html.replace(/<\/div>$/, b + '</div>') : html;
+}
 function sideBoardHtml(si) {
   const s = SETUP.sides[si];
   const tag = '<span class="rowtag">' + (si === 0 ? '自分' : '相手') + 'の場 ' + s.board.length + '/5</span>';
-  const units = s.board.map((u, i) => withBadge(unitTile(cardOf(u.oid), { ...u, cls: (SEL && SEL.w === 'board' && SEL.si === si && SEL.i === i ? ['sel'] : []), attrs: 'data-sel="board:' + si + ':' + i + '"' }), cardOf(u.oid))).join('');
+  const units = s.board.map((u, i) => withBadge(unitTile(cardOf(u.oid), { ...u, cls: (SEL && SEL.w === 'board' && SEL.si === si && SEL.i === i ? ['sel'] : []), attrs: 'data-sel="board:' + si + ':' + i + '"' }), cardOf(u.oid), 'board:' + si + ':' + i)).join('');
   return tag + units + (s.board.length < 5 ? slotTile('u', 'data-add="board:' + si + '"') : '');
 }
 function sideHandHtml(si) {
   const s = SETUP.sides[si];
   const tag = '<span class="rowtag">' + (si === 0 ? '自分' : '相手') + 'の手札 ' + s.hand.length + '/9</span>';
-  const tiles = s.hand.map((h, i) => withBadge(handTile(cardOf(h.oid), { cost: h.cost == null ? null : h.cost, cls: ['playable'].concat(SEL && SEL.w === 'hand' && SEL.si === si && SEL.i === i ? ['sel'] : []), attrs: 'data-sel="hand:' + si + ':' + i + '"' }), cardOf(h.oid))).join('');
+  const tiles = s.hand.map((h, i) => withBadge(handTile(cardOf(h.oid), { cost: h.cost == null ? null : h.cost, cls: ['playable'].concat(SEL && SEL.w === 'hand' && SEL.si === si && SEL.i === i ? ['sel'] : []), attrs: 'data-sel="hand:' + si + ':' + i + '"' }), cardOf(h.oid), 'hand:' + si + ':' + i)).join('');
   return tag + tiles + (s.hand.length < 9 ? slotTile('h', 'data-add="hand:' + si + '"') : '');
 }
 function editorPanelHtml() {
   const g = getSel();
   if (!g) {
     return '<div class="tip" style="line-height:1.7">場・手札のカードをクリックして編集します。「＋」の枠でカードを追加します。<br>右クリックでカードの詳細。</div>' +
+      '<div class="sec">まとめて消す</div><div class="row"><button data-clear="hand:0">自分の手札</button><button data-clear="board:0">自分の場</button><button data-clear="hand:1">相手の手札</button><button data-clear="board:1">相手の場</button></div>' +
       '<div class="sec">手札をデッキからランダムに配る</div><div class="row"><input type="number" id="dealN" min="0" max="9" value="5" style="width:54px"> 枚 <button data-deal="0">自分</button><button data-deal="1">相手</button></div>' +
       '<div class="sec">手番・ターンから既定値</div><div class="row"><button data-defaults="all">PP・進化などを入れ直す</button></div><div class="tip">ターン数・先攻・手番を変えると自動で入ります（手で直した席は変わりません）。</div>';
   }
@@ -453,6 +459,8 @@ function bindSetup(v) {
     el.oncontextmenu = e => { e.preventDefault(); const [w, si, i] = el.dataset.sel.split(':'); const x = (w === 'hand' ? SETUP.sides[+si].hand : SETUP.sides[+si].board)[+i]; if (x) showCardPop(cardOf(x.oid)); };
   });
   v.querySelectorAll('[data-add]').forEach(el => el.onclick = () => addCard(el.dataset.add));
+  v.querySelectorAll('[data-del]').forEach(b => { b.onclick = e => { e.stopPropagation(); const [w, si, i] = b.dataset.del.split(':'); removeCard(w, +si, +i); }; b.oncontextmenu = e => e.stopPropagation(); });
+  v.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => { const [w, si] = b.dataset.clear.split(':'); clearRow(w, +si); });
   q$('sEditor').addEventListener('click', e => { const t = e.target.closest('[data-pop]'); if (t && t.dataset.oid) showCardPop(cardOf(+t.dataset.oid)); });
   bindEditor(v);
   q$('sStart').onclick = startFromSetup;
@@ -502,6 +510,24 @@ function editAction(a) {
   else if (a === 'resetcost') g.x.cost = null;
   else if (a === 'left' || a === 'right') { const j = SEL.i + (a === 'left' ? -1 : 1); if (j >= 0 && j < list.length) { [list[SEL.i], list[j]] = [list[j], list[SEL.i]]; SEL.i = j; } }
   setupRender(); drawerRender();
+}
+/** 置いたカードを消す（選択中の位置がずれないよう直す） */
+function removeCard(w, si, i) {
+  const list = w === 'hand' ? SETUP.sides[si].hand : SETUP.sides[si].board;
+  const x = list[i]; if (!x) return;
+  list.splice(i, 1);
+  if (SEL && SEL.w === w && SEL.si === si) { if (SEL.i === i) SEL = null; else if (SEL.i > i) SEL.i--; }
+  setupRender(); drawerRender();
+  flashMsg((si === 0 ? '自分' : '相手') + 'の' + (w === 'hand' ? '手札' : '場') + 'から「' + cardOf(x.oid).name + '」を消しました');
+}
+function clearRow(w, si) {
+  const s = SETUP.sides[si], list = w === 'hand' ? s.hand : s.board;
+  if (!list.length) { flashMsg('消すカードがありません'); return; }
+  if (!confirm((si === 0 ? '自分' : '相手') + 'の' + (w === 'hand' ? '手札' : '場') + 'の ' + list.length + ' 枚をすべて消しますか？')) return;
+  list.length = 0;
+  if (SEL && SEL.w === w && SEL.si === si) SEL = null;
+  setupRender(); drawerRender();
+  flashMsg((si === 0 ? '自分' : '相手') + 'の' + (w === 'hand' ? '手札' : '場') + 'を空にしました');
 }
 function addCard(spec) {
   const [w, si] = spec.split(':');
@@ -649,6 +675,7 @@ function initModes() {
   document.addEventListener('keydown', e => {
     if (e.target.matches('input,select,textarea')) return;
     if (MODE === 'mull' && e.key === 'Enter') { e.preventDefault(); mullPrimary(); }
+    if (MODE === 'setup' && (e.key === 'Delete' || e.key === 'Backspace') && SEL && !q$('picker').classList.contains('on')) { e.preventDefault(); removeCard(SEL.w, SEL.si, SEL.i); }
   });
   setMode('mull');   // 最初はマリガン練習
 }

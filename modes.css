@@ -127,7 +127,7 @@
 .dpanel .list { flex:1; min-height:0; overflow:auto; }
 .dpanel .dr { cursor:grab; user-select:none; touch-action:pan-y; padding:2px 4px; }
 .dpanel .dr .rb2, .relbadge { color:var(--gold); font-size:11px; }
-.relbadge { position:absolute; right:4px; top:4px; background:#000b; border:1px solid var(--gold); border-radius:999px; padding:0 5px; z-index:5; }
+.relbadge { position:absolute; right:4px; top:18px; background:#000b; border:1px solid var(--gold); border-radius:999px; padding:0 5px; z-index:5; }
 body.dragging { cursor:grabbing; user-select:none; }
 body.dragging * { cursor:grabbing !important; }
 .ghost { position:fixed; z-index:70; width:64px; transform:translate(-50%,-50%); pointer-events:none; opacity:.9; filter:drop-shadow(0 6px 10px #000a); }
@@ -150,3 +150,7 @@ body.dragging * { cursor:grabbing !important; }
 .popx { position:absolute; top:6px; right:8px; padding:0 8px; font-size:16px; line-height:22px; }
 #cardpop .relgrid { grid-template-columns:repeat(auto-fill,minmax(70px,1fr)); }
 #cardpop .rel .nm { font-size:11px; }
+
+/* 置いたカードを消す × ボタン */
+.xdel { position:absolute; top:-8px; right:-8px; z-index:6; width:22px; height:22px; padding:0; border-radius:50%; background:#8d2a28; border:2px solid #fff9; color:#fff; font-size:14px; font-weight:800; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 1px 4px #000a; }
+.xdel:hover { background:#d6443f; }
