@@ -246,12 +246,12 @@ function mullRender() {
 //   どのルールにも当たらないカードは、すべて入れ替える。同じカードを複数のルールがキープさせるときは、いちばん多い枚数を採用する
 const AM_KEY = 'swwb.amull.v1';
 const AM = { deckId: null, first: '', runs: [], rules: null, busy: false };
-const AM_SINGLE = 4, AM_SETS = 5, AM_PARTNERS = 5, AM_COMBOS = 5, AM_COMBO_SLOTS = 4;
+const AM_SINGLE = 4, AM_SETS = 5, AM_BASES = 4, AM_PARTNERS = 5, AM_COMBOS = 5, AM_COMBO_SLOTS = 4;
 function amEmptyRules() {
   const slot = () => ({ oid: null, n: 1 });
   return {
     single: Array.from({ length: AM_SINGLE }, slot),
-    sets: Array.from({ length: AM_SETS }, () => ({ base: slot(), partners: Array.from({ length: AM_PARTNERS }, slot) })),
+    sets: Array.from({ length: AM_SETS }, () => ({ bases: Array.from({ length: AM_BASES }, slot), partners: Array.from({ length: AM_PARTNERS }, slot) })),
     combos: Array.from({ length: AM_COMBOS }, () => Array.from({ length: AM_COMBO_SLOTS }, () => ({ oid: null, n: 1 }))),
   };
 }
@@ -266,16 +266,21 @@ function amNormalize(r) {
   };
   r = r || {};
   base.single.forEach((s, i) => fix(s, (r.single || [])[i]));
-  base.sets.forEach((s, i) => { const o = (r.sets || [])[i] || {}; fix(s.base, o.base); s.partners.forEach((p, j) => fix(p, (o.partners || [])[j])); });
+  base.sets.forEach((s, i) => {
+    const o = (r.sets || [])[i] || {};
+    const bs = o.bases || (o.base ? [o.base] : []);   // 以前の形（基本が1枠）の保存データも読む
+    s.bases.forEach((b, k) => fix(b, bs[k]));
+    s.partners.forEach((p, j) => fix(p, (o.partners || [])[j]));
+  });
   base.combos.forEach((c, i) => c.forEach((s, j) => fix(s, ((r.combos || [])[i] || [])[j])));
   return base;
 }
 function amLoadRules() { AM.rules = amNormalize((GM.lsGet(AM_KEY, {}) || {})[AM.deckId]); }
 function amSaveRules() { const all = GM.lsGet(AM_KEY, {}) || {}; all[AM.deckId] = AM.rules; GM.lsSet(AM_KEY, all); }
-function amSlot(path) {   // 'single:0' / 'set:2:base' / 'set:2:p:3' / 'combo:1:2'
+function amSlot(path) {   // 'single:0' / 'set:2:b:1'（基本側）/ 'set:2:p:3'（セット側）/ 'combo:1:2'
   const p = path.split(':'), r = AM.rules;
   if (p[0] === 'single') return r.single[+p[1]];
-  if (p[0] === 'set') return p[2] === 'base' ? r.sets[+p[1]].base : r.sets[+p[1]].partners[+p[3]];
+  if (p[0] === 'set') return p[2] === 'b' ? r.sets[+p[1]].bases[+p[3]] : r.sets[+p[1]].partners[+p[3]];
   return r.combos[+p[1]][+p[2]];
 }
 const amName = oid => (cardOf(oid) || { name: '?' }).name;
@@ -294,12 +299,12 @@ function amEvaluate(hand, rules) {
     if (!e.why.includes(why)) e.why.push(why);
   };
   rules.single.forEach(s => { if (s.oid != null) want(s.oid, s.n, '単キープ'); });
-  rules.sets.forEach(s => {
-    if (s.base.oid == null) return;
-    const bc = cardOf(s.base.oid);
-    if (!bc || !count[bc.id]) return;
-    want(s.base.oid, s.base.n, 'セット(基本)の基本');
-    s.partners.forEach(p => { if (p.oid != null) want(p.oid, p.n, 'セット(基本) ' + amName(s.base.oid) + ' と'); });
+  rules.sets.forEach(s => {   // 基本側のどれかが1枚以上手札にあれば、手札にある基本側と、セット側をキープする
+    const bases = s.bases.filter(b => b.oid != null && cardOf(b.oid) && count[cardOf(b.oid).id]);
+    if (!bases.length) return;
+    const names = bases.map(b => amName(b.oid)).join('+');
+    bases.forEach(b => want(b.oid, b.n, 'セット(基本) ' + names + ' の基本'));
+    s.partners.forEach(p => { if (p.oid != null) want(p.oid, p.n, 'セット(基本) ' + names + ' と'); });
   });
   rules.combos.forEach(c => {
     const oids = c.filter(s => s.oid != null).map(s => s.oid);
@@ -365,9 +370,11 @@ const amSlotHtml = (path, label) => {
 function amRulesHtml() {
   let h = '<div class="sec">単キープ（4枠）<span class="tip"> 設定したカードを、指定の枚数までキープ</span></div>';
   for (let i = 0; i < AM_SINGLE; i++) h += amSlotHtml('single:' + i, 'カード ' + (i + 1));
-  h += '<div class="sec">セットキープ（基本）（5セット）<span class="tip"> 基本が手札にあれば、基本とセット側をキープ</span></div>';
+  h += '<div class="sec">セットキープ（基本）（5セット）<span class="tip"> 基本側が1枚以上あれば、基本側とセット側をキープ</span></div>';
   for (let i = 0; i < AM_SETS; i++) {
-    h += '<div class="amset"><div class="amsh">セット ' + (i + 1) + '</div><div class="ambase">' + amSlotHtml('set:' + i + ':base', '基本') + '</div><div class="ampart">';
+    h += '<div class="amset"><div class="amsh">セット ' + (i + 1) + '<span class="tip"> 基本側（どれか1枚以上あれば有効）</span></div><div class="ampart ambase">';
+    for (let k = 0; k < AM_BASES; k++) h += amSlotHtml('set:' + i + ':b:' + k, '基本 ' + (k + 1));
+    h += '</div><div class="amsh" style="margin-top:2px">セット側</div><div class="ampart">';
     for (let j = 0; j < AM_PARTNERS; j++) h += amSlotHtml('set:' + i + ':p:' + j, 'セット側 ' + (j + 1));
     h += '</div></div>';
   }
@@ -386,22 +393,11 @@ function amRunHtml(r) {
   const initial = r.hand0.map((c, i) => amThumb(c, keep.has(i) ? 'kept' : 'out', keep.has(i) ? 'キープ' : '入替')).join('');
   const after = r.hand1.map((c, i) => amThumb(c, i >= r.kept ? 'new' : '', i >= r.kept ? '引いた' : '')).join('');
   const reasons = [...new Set(Object.entries(r.why).filter(([id, e]) => e.n > 0).flatMap(([id, e]) => e.why.map(w => INFO.cards[+id].name + '（' + w + '）')))];
-  // 山の状況: ルールに書いたカードが山札のどこにあるか
-  const ruled = new Set();
-  AM.rules.single.forEach(s => s.oid != null && ruled.add(s.oid));
-  AM.rules.sets.forEach(s => { if (s.base.oid != null) { ruled.add(s.base.oid); s.partners.forEach(p => p.oid != null && ruled.add(p.oid)); } });
-  AM.rules.combos.forEach(c => c.forEach(s => s.oid != null && ruled.add(s.oid)));
-  const status = [...ruled].map(oid => {
-    const c = cardOf(oid); if (!c) return '';
-    const pos = r.order.map((x, i) => x === c.id ? i + 1 : 0).filter(Boolean);
-    const inHand = r.hand1.filter(x => x === c.id).length;
-    return '<span class="amst">' + esc(c.name) + ' <b>手札 ' + inHand + '</b> ／ 山札 ' + pos.length + '枚' + (pos.length ? '（' + pos.join('・') + ' 枚目）' : '') + '</span>';
-  }).join('');
-  const order = '<details class="amdeck"><summary>山札の並び（上から ' + r.order.length + ' 枚）</summary><div class="amgrid">' + r.order.map((c, i) => '<div class="amc sm" data-pop="1" data-cid="' + c + '"><img loading="lazy" src="' + imgUrl(INFO.cards[c]) + '" alt="" title="' + esc(INFO.cards[c].name) + '"><span class="no">' + (i + 1) + '</span></div>').join('') + '</div></details>';
+  const why = '<details class="amwhy"><summary>キープの理由</summary>' + (reasons.length ? '<ul>' + reasons.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '<div class="tip">ルールに当たるカードがなく、すべて入れ替えました</div>') + '</details>';
+  // 山札の並び（上から）: 折りたたまず横一列。この列の中だけ横にスクロールする
+  const order = '<div class="amorder"><span class="amlb">山札（上から ' + r.order.length + ' 枚）</span><div class="amstrip">' + r.order.map((c, i) => '<div class="amc sm" data-pop="1" data-cid="' + c + '"><img loading="lazy" src="' + imgUrl(INFO.cards[c]) + '" alt="" title="' + esc(INFO.cards[c].name) + '"><span class="no">' + (i + 1) + '</span></div>').join('') + '</div></div>';
   return '<div class="amrun"><div class="amrh"><b>#' + r.n + '</b> <span class="chip">' + (r.goingFirst ? '先攻' : '後攻') + '</span> <span class="chip">シード ' + r.seed + '</span> <span class="chip">キープ ' + r.kept + ' 枚 / 入れ替え ' + (r.hand0.length - r.kept) + ' 枚</span></div>' +
-    '<div class="amrow"><span class="amlb">初期手札</span>' + initial + '<span class="amarrow">→</span><span class="amlb">マリガン後</span>' + after + '</div>' +
-    '<div class="amwhy">' + (reasons.length ? 'キープの理由: ' + reasons.map(esc).join('、') : '<span class="tip">ルールに当たるカードがなく、すべて入れ替えました</span>') + '</div>' +
-    (status ? '<div class="amstat"><span class="amlb">山の状況</span>' + status + '</div>' : '') + order + '</div>';
+    '<div class="amrow"><span class="amlb">初期手札</span>' + initial + '<span class="amarrow">→</span><span class="amlb">マリガン後</span>' + after + why + '</div>' + order + '</div>';
 }
 function amRender(resetRuns) {
   ensureDecks();
@@ -416,7 +412,7 @@ function amRender(resetRuns) {
     '<div class="row" style="margin:6px 0"><select id="amFirst"><option value="">先攻/後攻 ランダム</option><option value="1"' + (AM.first === '1' ? ' selected' : '') + '>先攻</option><option value="0"' + (AM.first === '0' ? ' selected' : '') + '>後攻</option></select><button id="amClear" class="danger">ルールを全部消す</button></div>' +
     '<div class="tip" style="line-height:1.6">ルールはデッキごとにこのブラウザへ保存されます。ルールに当たらないカードは、すべて入れ替えます。同じカードを複数のルールがキープさせるときは、いちばん多い枚数を採用します。</div>' + amRulesHtml() + '</div>';
   const right = '<div class="amright"><div class="amtop"><button class="primary" id="amGo">自動マリガン（10回）</button><span class="tip">押すたびに新しいシードで、初期手札 → ルールどおりにマリガン を 10 回くり返します（Enter でも可）</span></div><div class="amruns panel">' +
-    (AM.runs.length ? AM.runs.map(amRunHtml).join('') : '<div class="tip" style="padding:14px;line-height:1.8">左でマリガンのルールを設定して、「自動マリガン（10回）」を押してください。<br>10 回ぶんの初期手札・マリガン後の手札・キープの理由・山札の並びが、ここに並びます。</div>') + '</div></div>';
+    (AM.runs.length ? AM.runs.map(amRunHtml).join('') : '<div class="tip" style="padding:14px;line-height:1.8">左でマリガンのルールを設定して、「自動マリガン（10回）」を押してください。<br>10 回ぶんの初期手札・マリガン後の手札（右にキープの理由）・山札の並びが、ここに並びます。</div>') + '</div></div>';
   v.innerHTML = left + right;
   v.querySelector('.amleft').scrollTop = sl; v.querySelector('.amruns').scrollTop = sr;
   q$('amDeck').onchange = e => { AM.deckId = e.target.value; AM.runs = []; amLoadRules(); amRender(); };

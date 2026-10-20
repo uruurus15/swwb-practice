@@ -199,3 +199,13 @@ body.dragging * { cursor:grabbing !important; }
 .ampart .amslot { margin:1px 0; }
 .amslot .nm { font-size:12px; }
 .amslot img { width:26px; }
+
+/* 自動マリガン確認: キープの理由は手札の右に折りたたみ、山札の並びは横一列（列の中だけ横スクロール） */
+.amrun { min-width:0; }
+.amrow { align-items:flex-start; padding-bottom:10px; }
+.amwhy { margin:0 0 0 10px; align-self:center; font-size:12px; color:#cdd6f2; min-width:120px; max-width:340px; }
+.amwhy summary { cursor:pointer; color:var(--dim); white-space:nowrap; }
+.amwhy ul { margin:4px 0 0; padding-left:16px; line-height:1.5; }
+.amorder { margin-top:6px; min-width:0; }
+.amstrip { display:flex; gap:5px; overflow-x:auto; overflow-y:hidden; padding:4px 2px 8px; max-width:100%; }
+.amstrip .amc.sm { width:46px; flex:none; }
