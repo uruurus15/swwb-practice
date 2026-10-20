@@ -209,3 +209,9 @@ body.dragging * { cursor:grabbing !important; }
 .amorder { margin-top:6px; min-width:0; }
 .amstrip { display:flex; gap:5px; overflow-x:auto; overflow-y:hidden; padding:4px 2px 8px; max-width:100%; }
 .amstrip .amc.sm { width:46px; flex:none; }
+.amwhy ul { margin:2px 0 0; padding-left:16px; }
+.amwhy { align-self:flex-start; max-width:380px; }
+.amrow { flex-wrap:nowrap; }
+.amwhy { flex:1 1 0; min-width:120px; max-width:none; margin-left:14px; align-self:center; }
+.amwhy ul { padding-left:14px; font-size:12px; }
+@media (max-width:1150px) { .amrow { flex-wrap:wrap; } .amwhy { flex-basis:100%; margin:6px 0 0 0; } }

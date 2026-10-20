@@ -393,7 +393,7 @@ function amRunHtml(r) {
   const initial = r.hand0.map((c, i) => amThumb(c, keep.has(i) ? 'kept' : 'out', keep.has(i) ? 'キープ' : '入替')).join('');
   const after = r.hand1.map((c, i) => amThumb(c, i >= r.kept ? 'new' : '', i >= r.kept ? '引いた' : '')).join('');
   const reasons = [...new Set(Object.entries(r.why).filter(([id, e]) => e.n > 0).flatMap(([id, e]) => e.why.map(w => INFO.cards[+id].name + '（' + w + '）')))];
-  const why = '<details class="amwhy"><summary>キープの理由</summary>' + (reasons.length ? '<ul>' + reasons.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '<div class="tip">ルールに当たるカードがなく、すべて入れ替えました</div>') + '</details>';
+  const why = '<div class="amwhy"><div class="amlb">キープの理由</div>' + (reasons.length ? '<ul>' + reasons.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '<div class="tip">ルールに当たるカードがなく、すべて入れ替えました</div>') + '</div>';
   // 山札の並び（上から）: 折りたたまず横一列。この列の中だけ横にスクロールする
   const order = '<div class="amorder"><span class="amlb">山札（上から ' + r.order.length + ' 枚）</span><div class="amstrip">' + r.order.map((c, i) => '<div class="amc sm" data-pop="1" data-cid="' + c + '"><img loading="lazy" src="' + imgUrl(INFO.cards[c]) + '" alt="" title="' + esc(INFO.cards[c].name) + '"><span class="no">' + (i + 1) + '</span></div>').join('') + '</div></div>';
   return '<div class="amrun"><div class="amrh"><b>#' + r.n + '</b> <span class="chip">' + (r.goingFirst ? '先攻' : '後攻') + '</span> <span class="chip">シード ' + r.seed + '</span> <span class="chip">キープ ' + r.kept + ' 枚 / 入れ替え ' + (r.hand0.length - r.kept) + ' 枚</span></div>' +
