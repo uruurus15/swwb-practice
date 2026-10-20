@@ -90,7 +90,7 @@ function currentDrawerDeck() {
 }
 function drawerRender() {
   const box = q$('drawer');
-  if (MODE === 'mull' || !box.classList.contains('open')) return;
+  if (MODE === 'mull' || MODE === 'amull' || !box.classList.contains('open')) return;
   const cur = currentDrawerDeck();
   if (!cur) { box.querySelector('.list').innerHTML = '<span class="tip">デッキを選ぶと一覧が出ます</span>'; q$('drawerTitle').textContent = 'デッキ一覧'; return; }
   let info;
@@ -122,17 +122,21 @@ function ensureDecks() {
 
 // ---------------- モード切替 ----------------
 function setMode(m) {
+  const prevMode = MODE;
   MODE = m;
   q$('game').style.display = m === 'play' ? '' : 'none';
   q$('mullView').classList.toggle('on', m === 'mull');
+  q$('amullView').classList.toggle('on', m === 'amull');
   q$('setupView').classList.toggle('on', m === 'setup');
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   q$('status').style.display = m === 'play' ? '' : 'none';
-  q$('drawerTab').style.display = (m === 'mull' || m === 'setup') ? 'none' : '';   // 盤面再現は左にデッキ列がある
-  if (m === 'mull' || m === 'setup') toggleDrawer(false);
+  q$('drawerTab').style.display = (m === 'mull' || m === 'amull' || m === 'setup') ? 'none' : '';   // 盤面再現は左にデッキ列がある
+  if (m === 'mull' || m === 'amull' || m === 'setup') toggleDrawer(false);
+  if (prevMode === 'amull' && m === 'mull') MULL.phase = 'idle';   // 自動マリガンが同じエンジン枠を使うので、マリガン練習は配り直す
   if (m === 'play') { q$('settingsBtn').style.display = ''; if (S) render(); else { q$('status').className = 'wait'; q$('status').textContent = '「設定・新しいゲーム」からゲームを始めてください'; q$('settings').classList.add('open'); } }
   else { q$('settingsBtn').style.display = 'none'; q$('settings').classList.remove('open'); q$('cancelTop').style.display = 'none'; q$('againTop').style.display = 'none'; }
   if (m === 'mull') mullRender();
+  if (m === 'amull') amRender();
   if (m === 'setup') setupRender();
   drawerRender();
 }
@@ -232,6 +236,201 @@ function mullRender() {
   v.querySelectorAll('.deckorder [data-cid]').forEach(el => { el.onclick = () => showCardPop(INFO.cards[+el.dataset.cid]); });
   v.querySelectorAll('[data-dview]').forEach(b => b.onclick = () => { MULL.view = b.dataset.dview; GM.lsSet('swwb.mull.view', MULL.view); mullRender(); });
   watchRows([q$('mullHand')]); requestAnimationFrame(() => fitRow(q$('mullHand')));
+}
+
+// ---------------- 自動マリガン確認（ルールに沿ってマリガンを自動で10回） ----------------
+// ルール（カードは公式IDで持つ。デッキごとに localStorage へ保存）:
+//   単キープ（4枠）: そのカードを n 枚（1〜3）までキープ
+//   セットキープ・基本（5セット）: 基本のカードが手札にあれば基本を n 枚キープし、セット側の各カードも、それぞれの枚数までキープ（セット側は5枠）
+//   セットキープ・特殊（5セット、4枠。2枠以上埋める）: 埋めたカードが手札にすべてそろったら、それぞれ 1 枚ずつ（同じカードを複数枠に入れたらその枚数）キープ
+//   どのルールにも当たらないカードは、すべて入れ替える。同じカードを複数のルールがキープさせるときは、いちばん多い枚数を採用する
+const AM_KEY = 'swwb.amull.v1';
+const AM = { deckId: null, first: '', runs: [], rules: null, busy: false };
+const AM_SINGLE = 4, AM_SETS = 5, AM_PARTNERS = 5, AM_COMBOS = 5, AM_COMBO_SLOTS = 4;
+function amEmptyRules() {
+  const slot = () => ({ oid: null, n: 1 });
+  return {
+    single: Array.from({ length: AM_SINGLE }, slot),
+    sets: Array.from({ length: AM_SETS }, () => ({ base: slot(), partners: Array.from({ length: AM_PARTNERS }, slot) })),
+    combos: Array.from({ length: AM_COMBOS }, () => Array.from({ length: AM_COMBO_SLOTS }, () => ({ oid: null, n: 1 }))),
+  };
+}
+/** 保存されたルールを、いまの形に合わせて読み込む（足りない枠は空にし、存在しないカードは外す） */
+function amNormalize(r) {
+  const base = amEmptyRules();
+  const fix = (dst, src) => {
+    if (!src || typeof src !== 'object') return;
+    const n = Math.max(1, Math.min(3, +src.n || 1));
+    dst.n = n;
+    dst.oid = src.oid != null && cardOf(+src.oid) ? +src.oid : null;
+  };
+  r = r || {};
+  base.single.forEach((s, i) => fix(s, (r.single || [])[i]));
+  base.sets.forEach((s, i) => { const o = (r.sets || [])[i] || {}; fix(s.base, o.base); s.partners.forEach((p, j) => fix(p, (o.partners || [])[j])); });
+  base.combos.forEach((c, i) => c.forEach((s, j) => fix(s, ((r.combos || [])[i] || [])[j])));
+  return base;
+}
+function amLoadRules() { AM.rules = amNormalize((GM.lsGet(AM_KEY, {}) || {})[AM.deckId]); }
+function amSaveRules() { const all = GM.lsGet(AM_KEY, {}) || {}; all[AM.deckId] = AM.rules; GM.lsSet(AM_KEY, all); }
+function amSlot(path) {   // 'single:0' / 'set:2:base' / 'set:2:p:3' / 'combo:1:2'
+  const p = path.split(':'), r = AM.rules;
+  if (p[0] === 'single') return r.single[+p[1]];
+  if (p[0] === 'set') return p[2] === 'base' ? r.sets[+p[1]].base : r.sets[+p[1]].partners[+p[3]];
+  return r.combos[+p[1]][+p[2]];
+}
+const amName = oid => (cardOf(oid) || { name: '?' }).name;
+
+/** 手札（カードIDの並び）にルールを当てる。キープする手札の位置の集合と、理由（カードIDごと）を返す */
+function amEvaluate(hand, rules) {
+  const count = {};
+  hand.forEach(c => { count[c] = (count[c] || 0) + 1; });
+  const need = {};   // カードID -> {n, why:[]}
+  const want = (oid, n, why) => {
+    const c = cardOf(oid); if (!c) return;
+    const have = count[c.id] || 0; if (!have) return;
+    const k = Math.min(n, have);
+    const e = need[c.id] || (need[c.id] = { n: 0, why: [] });
+    if (k > e.n) e.n = k;
+    if (!e.why.includes(why)) e.why.push(why);
+  };
+  rules.single.forEach(s => { if (s.oid != null) want(s.oid, s.n, '単キープ'); });
+  rules.sets.forEach(s => {
+    if (s.base.oid == null) return;
+    const bc = cardOf(s.base.oid);
+    if (!bc || !count[bc.id]) return;
+    want(s.base.oid, s.base.n, 'セット(基本)の基本');
+    s.partners.forEach(p => { if (p.oid != null) want(p.oid, p.n, 'セット(基本) ' + amName(s.base.oid) + ' と'); });
+  });
+  rules.combos.forEach(c => {
+    const oids = c.filter(s => s.oid != null).map(s => s.oid);
+    if (oids.length < 2) return;
+    const req = {};
+    oids.forEach(o => { const cd = cardOf(o); if (cd) req[cd.id] = (req[cd.id] || 0) + 1; });
+    if (!Object.keys(req).every(id => (count[id] || 0) >= req[id])) return;
+    const why = 'セット(特殊) ' + oids.map(amName).join('+');
+    oids.forEach(o => want(o, req[cardOf(o).id], why));
+  });
+  const keep = new Set(), used = {};
+  hand.forEach((c, i) => {
+    const e = need[c];
+    if (e && (used[c] || 0) < e.n) { keep.add(i); used[c] = (used[c] || 0) + 1; }
+  });
+  return { keep, why: need };
+}
+
+/** 1 回ぶん: 配る → ルールどおりにマリガン → 結果と山札の並びを記録 */
+function amRunOnce() {
+  const d = APP.decks.resolve(AM.deckId);
+  let seed = Math.floor(Math.random() * 2 ** 31);
+  const base = { op: 'reset', class0: d.class, cards0: d.cards, class1: d.class, cards1: d.cards };
+  let o;
+  for (let k = 0; k < 64; k++) {
+    mcall({ ...base, seed });
+    if (AM.first === '') break;
+    o = mcall({ op: 'observe', seat: 0 });
+    if (o.going_first === (AM.first === '1')) break;
+    seed = (seed + 1) % 2 ** 31;
+  }
+  let guard = 0;
+  o = mcall({ op: 'observe', seat: 0 });
+  while (!o.finished && !o.is_active && guard++ < 50) { mcall({ op: 'step', id: mcall({ op: 'bot', kind: 2 }).id }); o = mcall({ op: 'observe', seat: 0 }); }
+  const hand0 = o.my_hand.slice(), goingFirst = o.going_first;
+  const ev = amEvaluate(hand0, AM.rules);
+  hand0.forEach((c, i) => { if (!ev.keep.has(i)) mcall({ op: 'step', id: 1 + i }); });   // 入れ替えるカードに印を付ける
+  mcall({ op: 'step', id: 0 });
+  const o2 = mcall({ op: 'observe', seat: 0 });
+  const order = mcall({ op: 'deck', seat: 0 });
+  const kept = ev.keep.size;
+  return { seed, goingFirst, hand0, keep: [...ev.keep], hand1: o2.my_hand.slice(), order, kept, why: ev.why };
+}
+function amRun10() {
+  if (AM.busy) return;
+  AM.busy = true;
+  try {
+    ensureDecks();
+    AM.runs = [];
+    for (let i = 1; i <= 10; i++) { const r = amRunOnce(); r.n = i; AM.runs.push(r); }
+  } finally { AM.busy = false; }
+  amRender(true);   // 結果は先頭から見せる
+}
+
+const amSlotHtml = (path, label) => {
+  const s = amSlot(path);
+  const c = s.oid != null ? cardOf(s.oid) : null;
+  const cnt = '<select class="amn" data-amn="' + path + '" title="キープする最大枚数">' + [1, 2, 3].map(n => '<option value="' + n + '"' + (s.n === n ? ' selected' : '') + '>' + n + '枚</option>').join('') + '</select>';
+  const hasCount = !path.startsWith('combo');
+  if (!c) return '<div class="amslot empty" data-amadd="' + path + '" title="カードを選ぶ">＋ ' + esc(label) + '</div>';
+  return '<div class="amslot"><img src="' + imgUrl(c) + '" alt="" data-pop="1" data-cid="' + c.id + '"><span class="nm" data-amadd="' + path + '" title="クリックで変更">' + esc(c.name) + '</span>' + (hasCount ? cnt : '') + '<button class="amx" data-amdel="' + path + '" title="この枠を空にする">×</button></div>';
+};
+function amRulesHtml() {
+  let h = '<div class="sec">単キープ（4枠）<span class="tip"> 設定したカードを、指定の枚数までキープ</span></div>';
+  for (let i = 0; i < AM_SINGLE; i++) h += amSlotHtml('single:' + i, 'カード ' + (i + 1));
+  h += '<div class="sec">セットキープ（基本）（5セット）<span class="tip"> 基本が手札にあれば、基本とセット側をキープ</span></div>';
+  for (let i = 0; i < AM_SETS; i++) {
+    h += '<div class="amset"><div class="amsh">セット ' + (i + 1) + '</div><div class="ambase">' + amSlotHtml('set:' + i + ':base', '基本') + '</div><div class="ampart">';
+    for (let j = 0; j < AM_PARTNERS; j++) h += amSlotHtml('set:' + i + ':p:' + j, 'セット側 ' + (j + 1));
+    h += '</div></div>';
+  }
+  h += '<div class="sec">セットキープ（特殊）（5セット、2枠以上）<span class="tip"> 埋めた枠のカードがそろったらキープ</span></div>';
+  for (let i = 0; i < AM_COMBOS; i++) {
+    const filled = AM.rules.combos[i].filter(s => s.oid != null).length;
+    h += '<div class="amset"><div class="amsh">組み合わせ ' + (i + 1) + (filled === 1 ? ' <span class="amwarn">（2枠以上で有効）</span>' : '') + '</div><div class="ampart">';
+    for (let j = 0; j < AM_COMBO_SLOTS; j++) h += amSlotHtml('combo:' + i + ':' + j, 'カード ' + (j + 1));
+    h += '</div></div>';
+  }
+  return h;
+}
+const amThumb = (c, cls, tag, extra) => '<div class="amc ' + cls + '" data-pop="1" data-cid="' + c + '"' + (extra || '') + '><img loading="lazy" src="' + imgUrl(INFO.cards[c]) + '" alt="' + esc(INFO.cards[c].name) + '" title="' + esc(INFO.cards[c].name) + '">' + (tag ? '<span class="tg">' + tag + '</span>' : '') + '</div>';
+function amRunHtml(r) {
+  const keep = new Set(r.keep);
+  const initial = r.hand0.map((c, i) => amThumb(c, keep.has(i) ? 'kept' : 'out', keep.has(i) ? 'キープ' : '入替')).join('');
+  const after = r.hand1.map((c, i) => amThumb(c, i >= r.kept ? 'new' : '', i >= r.kept ? '引いた' : '')).join('');
+  const reasons = [...new Set(Object.entries(r.why).filter(([id, e]) => e.n > 0).flatMap(([id, e]) => e.why.map(w => INFO.cards[+id].name + '（' + w + '）')))];
+  // 山の状況: ルールに書いたカードが山札のどこにあるか
+  const ruled = new Set();
+  AM.rules.single.forEach(s => s.oid != null && ruled.add(s.oid));
+  AM.rules.sets.forEach(s => { if (s.base.oid != null) { ruled.add(s.base.oid); s.partners.forEach(p => p.oid != null && ruled.add(p.oid)); } });
+  AM.rules.combos.forEach(c => c.forEach(s => s.oid != null && ruled.add(s.oid)));
+  const status = [...ruled].map(oid => {
+    const c = cardOf(oid); if (!c) return '';
+    const pos = r.order.map((x, i) => x === c.id ? i + 1 : 0).filter(Boolean);
+    const inHand = r.hand1.filter(x => x === c.id).length;
+    return '<span class="amst">' + esc(c.name) + ' <b>手札 ' + inHand + '</b> ／ 山札 ' + pos.length + '枚' + (pos.length ? '（' + pos.join('・') + ' 枚目）' : '') + '</span>';
+  }).join('');
+  const order = '<details class="amdeck"><summary>山札の並び（上から ' + r.order.length + ' 枚）</summary><div class="amgrid">' + r.order.map((c, i) => '<div class="amc sm" data-pop="1" data-cid="' + c + '"><img loading="lazy" src="' + imgUrl(INFO.cards[c]) + '" alt="" title="' + esc(INFO.cards[c].name) + '"><span class="no">' + (i + 1) + '</span></div>').join('') + '</div></details>';
+  return '<div class="amrun"><div class="amrh"><b>#' + r.n + '</b> <span class="chip">' + (r.goingFirst ? '先攻' : '後攻') + '</span> <span class="chip">シード ' + r.seed + '</span> <span class="chip">キープ ' + r.kept + ' 枚 / 入れ替え ' + (r.hand0.length - r.kept) + ' 枚</span></div>' +
+    '<div class="amrow"><span class="amlb">初期手札</span>' + initial + '<span class="amarrow">→</span><span class="amlb">マリガン後</span>' + after + '</div>' +
+    '<div class="amwhy">' + (reasons.length ? 'キープの理由: ' + reasons.map(esc).join('、') : '<span class="tip">ルールに当たるカードがなく、すべて入れ替えました</span>') + '</div>' +
+    (status ? '<div class="amstat"><span class="amlb">山の状況</span>' + status + '</div>' : '') + order + '</div>';
+}
+function amRender(resetRuns) {
+  ensureDecks();
+  if (!AM.deckId || !INFO.decks.some(d => d.ready && d.id === AM.deckId)) { AM.deckId = MULL.deckId; AM.runs = []; AM.rules = null; }
+  if (!AM.rules) amLoadRules();
+  const v = q$('amullView');
+  const pl = v.querySelector('.amleft'), pr = v.querySelector('.amruns');
+  const sl = pl ? pl.scrollTop : 0, sr = pr && !resetRuns ? pr.scrollTop : 0;
+  const decks = INFO.decks.filter(d => d.ready);
+  const opt = d => '<option value="' + esc(d.id) + '"' + (d.id === AM.deckId ? ' selected' : '') + '>' + (d.custom ? '★' : '') + INFO.classes[d.class] + '・' + esc(d.name) + '</option>';
+  const left = '<div class="panel amleft"><div class="row"><select id="amDeck" style="flex:1;min-width:0">' + decks.map(opt).join('') + '</select><button id="amEdit">デッキ編集</button></div>' +
+    '<div class="row" style="margin:6px 0"><select id="amFirst"><option value="">先攻/後攻 ランダム</option><option value="1"' + (AM.first === '1' ? ' selected' : '') + '>先攻</option><option value="0"' + (AM.first === '0' ? ' selected' : '') + '>後攻</option></select><button id="amClear" class="danger">ルールを全部消す</button></div>' +
+    '<div class="tip" style="line-height:1.6">ルールはデッキごとにこのブラウザへ保存されます。ルールに当たらないカードは、すべて入れ替えます。同じカードを複数のルールがキープさせるときは、いちばん多い枚数を採用します。</div>' + amRulesHtml() + '</div>';
+  const right = '<div class="amright"><div class="amtop"><button class="primary" id="amGo">自動マリガン（10回）</button><span class="tip">押すたびに新しいシードで、初期手札 → ルールどおりにマリガン を 10 回くり返します（Enter でも可）</span></div><div class="amruns panel">' +
+    (AM.runs.length ? AM.runs.map(amRunHtml).join('') : '<div class="tip" style="padding:14px;line-height:1.8">左でマリガンのルールを設定して、「自動マリガン（10回）」を押してください。<br>10 回ぶんの初期手札・マリガン後の手札・キープの理由・山札の並びが、ここに並びます。</div>') + '</div></div>';
+  v.innerHTML = left + right;
+  v.querySelector('.amleft').scrollTop = sl; v.querySelector('.amruns').scrollTop = sr;
+  q$('amDeck').onchange = e => { AM.deckId = e.target.value; AM.runs = []; amLoadRules(); amRender(); };
+  q$('amFirst').onchange = e => { AM.first = e.target.value; };
+  q$('amEdit').onclick = () => { EDIT_FOR = 'amull'; openEditor(); edLoadDeck(AM.deckId); };
+  q$('amClear').onclick = () => { if (confirm('このデッキのマリガンルールをすべて消しますか？')) { AM.rules = amEmptyRules(); amSaveRules(); AM.runs = []; amRender(); } };
+  q$('amGo').onclick = amRun10;
+  v.querySelectorAll('[data-amadd]').forEach(el => el.onclick = () => {
+    const path = el.dataset.amadd;
+    openPicker('マリガンルールに入れるカード', c => { amSlot(path).oid = c.official_id; amSaveRules(); amRender(); }, { deckId: AM.deckId, deckOnly: true });
+  });
+  v.querySelectorAll('[data-amdel]').forEach(el => el.onclick = () => { const s = amSlot(el.dataset.amdel); s.oid = null; s.n = 1; amSaveRules(); amRender(); });
+  v.querySelectorAll('[data-amn]').forEach(el => el.onchange = () => { amSlot(el.dataset.amn).n = +el.value; amSaveRules(); });
+  v.querySelectorAll('[data-cid][data-pop]').forEach(el => el.onclick = () => showCardPop(INFO.cards[+el.dataset.cid]));
 }
 
 // ---------------- 盤面再現（対戦画面のまま直接編集） ----------------
@@ -608,8 +807,8 @@ let PICK = { cb: null, boardOnly: false, deckOids: new Set(), deckClass: 0 };
 function openPicker(title, cb, opt) {
   opt = opt || {};
   let deckOids = new Set(), deckClass = 0;
-  try { const d = APP.decks.resolve(SETUP.decks[opt.side || 0]); d.cards.forEach(([o]) => deckOids.add(o)); deckClass = d.class; } catch (e) { /* デッキ未選択 */ }
-  PICK = { cb, boardOnly: !!opt.boardOnly, deckOids, deckClass };
+  try { const d = APP.decks.resolve(opt.deckId || SETUP.decks[opt.side || 0]); d.cards.forEach(([o]) => deckOids.add(o)); deckClass = d.class; } catch (e) { /* デッキ未選択 */ }
+  PICK = { cb, boardOnly: !!opt.boardOnly, deckOids, deckClass, deckOnly: !!opt.deckOnly };
   q$('pickTitle').textContent = title;
   q$('pickClass').value = 'deck';
   q$('pickKeep').checked = !!opt.keep;
@@ -622,7 +821,7 @@ function pickRender() {
   const q = q$('pickQ').value.trim().toLowerCase(), cls = q$('pickClass').value, kind = q$('pickKind').value;
   const tok = q$('pickTok').checked, rot = q$('pickRot').checked;
   let pool = INFO.cards.filter(c => (tok || !c.token) && (!rot || c.rot || c.token)
-    && (cls === '' || (cls === 'deck' ? (c.class === PICK.deckClass || c.class === 0 || c.token) : c.class === +cls))
+    && (PICK.deckOnly ? PICK.deckOids.has(c.official_id) : (cls === '' || (cls === 'deck' ? (c.class === PICK.deckClass || c.class === 0 || c.token) : c.class === +cls)))
     && (!kind || c.kind === kind) && (!PICK.boardOnly || c.kind !== 'spell') && (!q || (c.name + ' ' + c.text).toLowerCase().includes(q)));
   pool.sort((a, b) => (PICK.deckOids.has(b.official_id) - PICK.deckOids.has(a.official_id)) || a.cost - b.cost || a.official_id - b.official_id);
   const more = pool.length > 240; pool = pool.slice(0, 240);
@@ -640,7 +839,8 @@ function onDeckSaved(name, ready) {
   if (who === null) return;
   if (!ready) { if (MODE === 'setup') flashMsg('「' + name + '」は未完成（40枚ではない等）なので、デッキは切り替えていません'); return; }
   const id = 'c:' + name;
-  if (who === 'mull' && MODE === 'mull') { MULL.deckId = id; MULL.history = []; MULL.count = 0; MULL.phase = 'idle'; mullRender(); }
+  if (who === 'amull' && MODE === 'amull') { AM.deckId = id; AM.runs = []; AM.rules = null; amRender(); }
+  else if (who === 'mull' && MODE === 'mull') { MULL.deckId = id; MULL.history = []; MULL.count = 0; MULL.phase = 'idle'; mullRender(); }
   else if ((who === 0 || who === 1) && MODE === 'setup') {
     SETUP.decks[who] = id; setupRender(); drawerRender();
     flashMsg((who === 0 ? '自分' : '相手') + 'のデッキを「' + name + '」に切り替えました');
@@ -650,11 +850,11 @@ function onDeckSaved(name, ready) {
 // ---------------- 初期化 ----------------
 function initModes() {
   const tabs = document.createElement('div'); tabs.className = 'tabs';
-  tabs.innerHTML = '<button data-mode="play">対戦</button><button data-mode="mull">マリガン練習</button><button data-mode="setup">盤面再現</button>';
+  tabs.innerHTML = '<button data-mode="play">対戦</button><button data-mode="mull">マリガン練習</button><button data-mode="amull">自動マリガン確認</button><button data-mode="setup">盤面再現</button>';
   q$('topbar').insertBefore(tabs, q$('status'));
   tabs.onclick = e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.mode); };
   const mk = (tag, id, cls) => { const e = document.createElement(tag); e.id = id; if (cls) e.className = cls; document.body.appendChild(e); return e; };
-  mk('div', 'mullView', 'view'); mk('div', 'setupView', 'view');
+  mk('div', 'mullView', 'view'); mk('div', 'amullView', 'view'); mk('div', 'setupView', 'view');
   const dr = mk('div', 'drawer'); dr.innerHTML = '<h3 id="drawerTitle">デッキ一覧</h3><div class="tip">クリックでカード詳細</div><div class="list"></div>';
   dr.addEventListener('click', e => { const r = e.target.closest('.dr'); if (r) showCardPop(cardOf(+r.dataset.oid)); });
   const tab = mk('button', 'drawerTab'); tab.textContent = 'デッキ ◀'; tab.onclick = () => toggleDrawer();
@@ -666,15 +866,17 @@ function initModes() {
   initSetupDrag();
   const baseRender = render; render = function () { baseRender(); if (MODE === 'play') drawerRender(); };
   const baseFill = fillDeckSelects;
-  fillDeckSelects = function () { baseFill(); if (MODE === 'mull') mullRender(); if (MODE === 'setup') setupRender(); };
+  fillDeckSelects = function () { baseFill(); if (MODE === 'mull') mullRender(); if (MODE === 'amull') amRender(); if (MODE === 'setup') setupRender(); };
   const ready = INFO.decks.filter(d => d.ready);
   MULL.deckId = (ready.find(d => d.id === 'b:0') || ready[0]).id;
   SETUP.decks = [MULL.deckId, MULL.deckId];
+  AM.deckId = MULL.deckId;
   applyDefaults(0); applyDefaults(1);
   window.addEventListener('resize', () => { if (MODE === 'mull' && q$('mullHand')) fitRow(q$('mullHand')); if (MODE === 'setup' && q$('sHand')) { fitRow(q$('sHand')); q$('setupView').querySelectorAll('.strip').forEach(fitRow); } });
   document.addEventListener('keydown', e => {
     if (e.target.matches('input,select,textarea')) return;
     if (MODE === 'mull' && e.key === 'Enter') { e.preventDefault(); mullPrimary(); }
+    if (MODE === 'amull' && e.key === 'Enter' && !q$('picker').classList.contains('on')) { e.preventDefault(); amRun10(); }
     if (MODE === 'setup' && (e.key === 'Delete' || e.key === 'Backspace') && SEL && !q$('picker').classList.contains('on')) { e.preventDefault(); removeCard(SEL.w, SEL.si, SEL.i); }
   });
   setMode('mull');   // 最初はマリガン練習

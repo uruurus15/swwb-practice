@@ -154,3 +154,48 @@ body.dragging * { cursor:grabbing !important; }
 /* 置いたカードを消す × ボタン */
 .xdel { position:absolute; top:-8px; right:-8px; z-index:6; width:22px; height:22px; padding:0; border-radius:50%; background:#8d2a28; border:2px solid #fff9; color:#fff; font-size:14px; font-weight:800; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 1px 4px #000a; }
 .xdel:hover { background:#d6443f; }
+
+/* 自動マリガン確認 */
+#amullView.on { display:grid; grid-template-columns:470px minmax(0,1fr); gap:10px; padding:8px 12px; overflow:hidden; }
+@media (max-width:1100px) { #amullView.on { grid-template-columns:400px minmax(0,1fr); } }
+#amullView > * { min-height:0; min-width:0; }
+.amleft { overflow:auto; }
+.amright { display:flex; flex-direction:column; gap:8px; min-height:0; }
+.amtop { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.amtop button { font-size:15px; padding:8px 18px; }
+.amruns { flex:1; min-height:0; overflow:auto; }
+.amslot { display:flex; align-items:center; gap:6px; padding:2px 4px; margin:2px 0; background:#ffffff0a; border:1px solid var(--line); border-radius:8px; min-width:0; }
+.amslot img { width:30px; height:auto; border-radius:3px; flex:none; cursor:pointer; }
+.amslot .nm { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; cursor:pointer; }
+.amslot.empty { color:var(--dim); cursor:pointer; padding:6px 8px; border-style:dashed; font-size:12.5px; }
+.amslot.empty:hover { border-color:var(--acc); color:#fff; }
+.amn { padding:1px 2px; font-size:12px; }
+.amx { padding:0 7px; line-height:20px; }
+.amset { border:1px solid var(--line); border-radius:10px; padding:4px 6px; margin:6px 0; background:#ffffff05; }
+.amsh { font-size:12px; font-weight:700; color:var(--gold); margin-bottom:2px; }
+.amwarn { color:var(--warn); font-weight:400; }
+.ambase { margin-bottom:3px; padding-bottom:3px; border-bottom:1px dotted #ffffff22; }
+.amrun { border-bottom:1px solid var(--line); padding:8px 6px 10px; }
+.amrh { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px; }
+.amrow { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.amlb { font-size:11px; color:var(--dim); margin-right:2px; white-space:nowrap; }
+.amarrow { color:var(--gold); font-weight:800; margin:0 4px; }
+.amc { position:relative; width:62px; flex:none; cursor:pointer; }
+.amc img { width:100%; display:block; border-radius:4px; }
+.amc.out img { filter:grayscale(.85) brightness(.5); }
+.amc.kept { outline:2px solid var(--good); outline-offset:1px; border-radius:4px; }
+.amc.new { outline:2px solid var(--gold); outline-offset:1px; border-radius:4px; }
+.amc .tg { position:absolute; left:50%; bottom:-6px; transform:translateX(-50%); font-size:10px; font-weight:800; border-radius:999px; padding:0 6px; white-space:nowrap; background:#000c; color:#fff; }
+.amc.kept .tg { background:var(--good); color:#062; } .amc.new .tg { background:var(--gold); color:#35270a; } .amc.out .tg { background:#555; }
+.amwhy { margin-top:10px; font-size:12px; color:#cdd6f2; line-height:1.5; }
+.amstat { margin-top:3px; display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; font-size:12px; }
+.amst { background:#ffffff0d; border-radius:999px; padding:1px 9px; }
+.amdeck { margin-top:4px; }
+.amdeck summary { cursor:pointer; font-size:12px; color:var(--dim); }
+.amgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(44px,1fr)); gap:5px; padding:6px 2px; }
+.amc.sm { width:auto; }
+.amc.sm .no { position:absolute; left:-2px; top:-2px; min-width:16px; height:16px; border-radius:8px; background:#000c; border:1px solid var(--gold); color:var(--gold); font-size:10px; font-weight:800; text-align:center; line-height:14px; padding:0 3px; }
+.ampart { display:grid; grid-template-columns:1fr 1fr; gap:2px 6px; }
+.ampart .amslot { margin:1px 0; }
+.amslot .nm { font-size:12px; }
+.amslot img { width:26px; }
