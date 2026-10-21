@@ -161,6 +161,7 @@
     <label>相手 <select id="bot"></select></label>
     <label>あなたのデッキ <select id="mydeck"></select></label>
     <label>相手のデッキ <select id="botdeck"></select></label>
+    <label title="新しい弾でローテーションの範囲が変わると、範囲から外れたプリセットデッキは一覧から隠れます"><input type="checkbox" id="oldPresets"> ローテ外のプリセットも表示</label>
     <label>手番 <select id="first"><option value="">ランダム</option><option value="1">先攻</option><option value="0">後攻</option></select></label>
     <div style="display:flex;gap:8px"><button class="primary" id="new" style="flex:1">新しいゲーム</button><button id="editDecks">デッキ編集</button></div>
     <span class="tip" id="botlabel"></span>
@@ -600,13 +601,16 @@ async function init() {
   S = await api('/api/state');
   initModes();
 }
+const deckShown = d => d.custom || d.rot !== false || (() => { try { return localStorage.getItem('showOldPresets') === '1'; } catch (e) { return false; } })();
 function fillDeckSelects() {
+  { const cb = $('oldPresets'); if (cb) cb.checked = (() => { try { return localStorage.getItem('showOldPresets') === '1'; } catch (e) { return false; } })(); }
   const CL = INFO.classes;
   const keep = [$('mydeck').value, $('botdeck').value];
-  const opts = INFO.decks.map(d => `<option value="${esc(d.id)}" ${d.ready ? '' : 'disabled'}>${d.custom ? '★' : ''}${CL[d.class]}・${esc(d.name)}${d.ready ? '' : (d.custom ? '（未完成）' : '（未実装）')}</option>`).join('');
+  const opts = INFO.decks.filter(d => deckShown(d) || keep.includes(d.id)).map(d => `<option value="${esc(d.id)}" ${d.ready ? '' : 'disabled'}>${d.custom ? '★' : ''}${CL[d.class]}・${esc(d.name)}${d.ready ? '' : (d.custom ? '（未完成）' : '（未実装）')}</option>`).join('');
   $('mydeck').innerHTML = opts; $('botdeck').innerHTML = opts;
   [['mydeck', keep[0]], ['botdeck', keep[1]]].forEach(([id, v]) => { if (v && INFO.decks.some(d => d.id === v && d.ready)) $(id).value = v; });
 }
+$('oldPresets').onchange = e => { try { localStorage.setItem('showOldPresets', e.target.checked ? '1' : '0'); } catch (x) {} fillDeckSelects(); };
 $('new').onclick = async () => {
   const f = $('first').value;
   const j = await api('/api/new', {bot: $('bot').value, first: f === '' ? null : f === '1', my_deck: $('mydeck').value, bot_deck: $('botdeck').value});

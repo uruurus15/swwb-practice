@@ -14,7 +14,7 @@
   class DeckStore {
     constructor() { this.builtin = call({ op: 'decks' }); this.custom = lsGet(LS_KEY, []); }
     listing() {
-      const out = this.builtin.map((d, i) => ({ id: 'b:' + i, name: d.name, class: d.class, ready: d.ready, custom: false, cards: d.cards }));
+      const out = this.builtin.map((d, i) => ({ id: 'b:' + i, name: d.name, class: d.class, ready: d.ready, rot: d.rot !== false, custom: false, cards: d.cards }));
       for (const d of this.custom) {
         const why = call({ op: 'check_deck', class: d.class, cards: d.cards });
         out.push({ id: 'c:' + d.name, name: d.name, class: d.class, ready: why === null, reason: why, custom: true, cards: d.cards });
