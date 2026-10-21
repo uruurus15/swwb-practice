@@ -339,7 +339,8 @@ function overlayHtml() {
     const ci = INFO.cards.find(c => c.name === S.pending_card);
     return `<div class="box"><h2>モードを選んでください${S.pending_card ? '：' + esc(S.pending_card) : ''}</h2>` +
       (ci ? `<div class="tx">${fmt(ci.text)}</div>` : '') +
-      ids.map((id, k) => {
+      ids.map((id) => {
+        const k = id - 1; // 複数のモードを選ぶときも、モードの番号は元のまま
         const m = ci && String(ci.text).match(new RegExp('（' + (k + 1) + '）([^（]*)'));
         return `<button class="primary" data-id="${id}">${m ? esc('（' + (k + 1) + '）' + m[1].replace(/\s*\/\s*$/, '').trim()) : 'モード ' + (k + 1)}</button>`;
       }).join('') + `</div>`;
