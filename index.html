@@ -164,7 +164,7 @@
     <label>相手 <select id="bot"></select></label>
     <label>あなたのデッキ <select id="mydeck"></select></label>
     <label>相手のデッキ <select id="botdeck"></select></label>
-    <label title="新しい弾でローテーションの範囲が変わると、範囲から外れたプリセットデッキは一覧から隠れます"><input type="checkbox" id="oldPresets"> ローテ外のプリセットも表示</label>
+    <label title="デッキは、作った（取得した）時点のローテーション最新弾＝環境ごとに分かれます。自動 = プリセットがある最新の環境">環境 <select id="deckEnv"></select></label>
     <label>手番 <select id="first"><option value="">ランダム</option><option value="1">先攻</option><option value="0">後攻</option></select></label>
     <div style="display:flex;gap:8px"><button class="primary" id="new" style="flex:1">新しいゲーム</button><button id="editDecks">デッキ編集</button></div>
     <span class="tip" id="botlabel"></span>
@@ -197,6 +197,7 @@
     <b>デッキ編集</b>
     <label>読み込み <select id="edLoad"></select></label>
     <label>名前 <input type="text" id="edName" maxlength="40" size="18" placeholder="デッキ名"></label>
+    <label title="このデッキを入れておく環境（ローテーション最新弾）">環境 <select id="edEnv"></select></label>
     <label>クラス <select id="edClass"></select></label>
     <button class="primary" id="edSave">保存</button>
     <button id="edDelete">削除</button>
@@ -222,8 +223,8 @@
   </div>
 </div>
 <script src="engine.js?v=10"></script>
-<script src="game.js?v=10"></script>
-<script src="modes.js?v=13"></script>
+<script src="game.js?v=11"></script>
+<script src="modes.js?v=14"></script>
 <script>
 let S = null, INFO = null;
 const $ = id => document.getElementById(id);
@@ -601,25 +602,48 @@ document.addEventListener('drop', async e => {
 
 async function init() {
   $('status').textContent = '読み込み中…';
-  await SWWB.initEngine('swwb_wasm.wasm?v=10');
-  const cards = await (await fetch('data/cards.json?v=10')).json();
-  APP = SWWBGame.makeApi(cards);
+  await SWWB.initEngine('swwb_wasm.wasm?v=11');
+  const cards = await (await fetch('data/cards.json?v=11')).json();
+  let envs = null;
+  try { envs = await (await fetch('data/envs.json?v=1')).json(); } catch (e) { /* 環境名が無くても動く */ }
+  APP = SWWBGame.makeApi(cards, envs);
   INFO = await api('/api/info');
   $('bot').innerHTML = INFO.bots.map(b => `<option value="${esc(b)}">${esc(b === 'heuristic' ? 'ルールベース' : b === 'random' ? 'ランダム' : b)}</option>`).join('');
   fillDeckSelects();
   S = await api('/api/state');
   initModes();
 }
-const deckShown = d => d.custom || d.rot !== false || (() => { try { return localStorage.getItem('showOldPresets') === '1'; } catch (e) { return false; } })();
+// ---- 環境（ローテーション最新弾）: デッキは「どの環境のデッキか」を持ち、環境ごとに呼び出す ----
+const envOf = d => d.env || 10009;   // 環境の記録がない古い一覧（キャッシュ等）は、アズヴォルト環境として扱う
+const envPref = () => { try { return localStorage.getItem('deckEnv') || 'auto'; } catch (e) { return 'auto'; } };
+const envName = id => (INFO.envs && INFO.envs.sets && INFO.envs.sets[id]) || ('環境 ' + id);
+const latestEnv = () => (INFO.envs && INFO.envs.latest) || 10009;
+/** 自動 = プリセットデッキがある、いちばん新しい環境（新しい弾のプリセットが追加されると、自動で切り替わる） */
+const curEnv = () => {
+  const p = envPref();
+  if (p === 'all') return null;
+  if (p !== 'auto') return +p;
+  return Math.max(0, ...INFO.decks.filter(d => !d.custom).map(envOf)) || latestEnv();
+};
+const deckShown = d => { const e = curEnv(); return e === null || envOf(d) === e; };
+function fillEnvSelect() {
+  const cnt = {};
+  INFO.decks.forEach(d => cnt[envOf(d)] = (cnt[envOf(d)] || 0) + 1);
+  const ids = [...new Set([latestEnv(), ...Object.keys(cnt).map(Number)])].sort((a, b) => b - a);   // 最新の環境と、デッキがある環境だけ
+  const cur = curEnv();
+  $('deckEnv').innerHTML = `<option value="auto">自動（${cur === null ? 'すべて' : esc(envName(cur))}）</option><option value="all">すべての環境</option>` +
+    ids.map(i => `<option value="${i}">${esc(envName(i))}（${cnt[i] || 0}）</option>`).join('');
+  $('deckEnv').value = envPref();
+}
 function fillDeckSelects() {
-  { const cb = $('oldPresets'); if (cb) cb.checked = (() => { try { return localStorage.getItem('showOldPresets') === '1'; } catch (e) { return false; } })(); }
+  fillEnvSelect();
   const CL = INFO.classes;
   const keep = [$('mydeck').value, $('botdeck').value];
-  const opts = INFO.decks.filter(d => deckShown(d) || keep.includes(d.id)).map(d => `<option value="${esc(d.id)}" ${d.ready ? '' : 'disabled'}>${d.custom ? '★' : ''}${CL[d.class]}・${esc(d.name)}${d.ready ? '' : (d.custom ? '（未完成）' : '（未実装）')}</option>`).join('');
+  const opts = INFO.decks.filter(d => deckShown(d) || keep.includes(d.id)).map(d => `<option value="${esc(d.id)}" ${d.ready ? '' : 'disabled'}>${d.custom ? '★' : ''}${CL[d.class]}・${esc(d.name)}${d.ready ? '' : (d.custom ? '（未完成）' : '（未実装）')}${d.rot === false ? '（ローテ外）' : ''}</option>`).join('');
   $('mydeck').innerHTML = opts; $('botdeck').innerHTML = opts;
   [['mydeck', keep[0]], ['botdeck', keep[1]]].forEach(([id, v]) => { if (v && INFO.decks.some(d => d.id === v && d.ready)) $(id).value = v; });
 }
-$('oldPresets').onchange = e => { try { localStorage.setItem('showOldPresets', e.target.checked ? '1' : '0'); } catch (x) {} fillDeckSelects(); };
+$('deckEnv').onchange = e => { try { localStorage.setItem('deckEnv', e.target.value); } catch (x) {} fillDeckSelects(); };
 $('new').onclick = async () => {
   const f = $('first').value;
   const j = await api('/api/new', {bot: $('bot').value, first: f === '' ? null : f === '1', my_deck: $('mydeck').value, bot_deck: $('botdeck').value});
@@ -628,7 +652,7 @@ $('new').onclick = async () => {
 $('editDecks').onclick = () => { $('settings').classList.remove('open'); openEditor(); };
 
 // ---------------- デッキ編集 ----------------
-const ED = { cls: 2, counts: {} };  // counts: 公式card_id → 枚数
+const ED = { cls: 2, counts: {}, orig: null };  // counts: 公式card_id → 枚数
 const byOid = () => { if (!INFO._by) { INFO._by = {}; INFO.cards.forEach(c => INFO._by[c.official_id] = c); } return INFO._by; };
 const edTotal = () => Object.values(ED.counts).reduce((a, b) => a + b, 0);
 function edProblems() {
@@ -649,6 +673,8 @@ function edLoadDeck(id) {
   ED.cls = d.class; ED.counts = {};
   d.cards.forEach(([o, n]) => ED.counts[o] = n);
   $('edName').value = d.custom ? d.name : d.name + ' 改';
+  ED.orig = d.custom ? d.name : null;   // 自作デッキを読み込んだときは、名前を変えて保存すると改名になる
+  $('edEnv').value = d.env || latestEnv();
   $('edClass').value = ED.cls;
   edRender();
 }
@@ -691,9 +717,12 @@ function edRender() {
 }
 function edFillLoad() {
   const CL = INFO.classes;
-  $('edLoad').innerHTML = '<option value="">（選ぶ）</option>' + INFO.decks.map(d => `<option value="${esc(d.id)}">${d.custom ? '★' : ''}${CL[d.class]}・${esc(d.name)}</option>`).join('');
+  $('edLoad').innerHTML = '<option value="">（選ぶ）</option>' + INFO.decks.map(d => `<option value="${esc(d.id)}">${d.custom ? '★' : ''}${CL[d.class]}・${esc(d.name)}（${esc(envName(d.env))}）</option>`).join('');
 }
 function openEditor() {
+  { const ids = [...new Set([latestEnv(), ...Object.keys((INFO.envs && INFO.envs.sets) || {}).map(Number)])].sort((x, y) => y - x);
+    const keepV = $('edEnv').value; $('edEnv').innerHTML = ids.map(i => `<option value="${i}">${esc(envName(i))}</option>`).join('');
+    $('edEnv').value = keepV && ids.includes(+keepV) ? keepV : (curEnv() || latestEnv()); }
   $('edClass').innerHTML = INFO.classes.map((n, i) => i ? `<option value="${i}">${n}</option>` : '').join('');
   $('edClass').value = ED.cls;
   edFillLoad(); edRender();
@@ -713,8 +742,15 @@ $('edClear').onclick = () => { if (!edTotal() || confirm('デッキを空にし�
 $('edSave').onclick = async () => {
   const name = $('edName').value.trim();
   if (!name) { alert('デッキ名を入力してください'); return; }
-  if (INFO.decks.some(d => d.custom && d.name === name) && !confirm(`「${name}」を上書き保存します。よろしいですか？`)) return;
-  const j = await api('/api/deck/save', {name, class: ED.cls, cards: Object.entries(ED.counts).map(([o, n]) => [+o, n])});
+  let oldName = null;
+  if (ED.orig && ED.orig !== name && INFO.decks.some(d => d.custom && d.name === ED.orig)) {
+    if (confirm(`デッキ名を「${ED.orig}」から「${name}」に変更しますか？
+（OK＝名前を変更 / キャンセル＝「${ED.orig}」は残して別のデッキとして保存）`)) oldName = ED.orig;
+  }
+  if (INFO.decks.some(d => d.custom && d.name === name) && name !== ED.orig && !confirm(`「${name}」を上書き保存します。よろしいですか？`)) return;
+  const j = await api('/api/deck/save', {name, class: ED.cls, env: +$('edEnv').value, old_name: oldName, cards: Object.entries(ED.counts).map(([o, n]) => [+o, n])});
+  if (j) ED.orig = name;
+  if (j && curEnv() !== null && +$('edEnv').value !== curEnv()) { try { localStorage.setItem('deckEnv', $('edEnv').value); } catch (x) {} }   // 保存したデッキが、いまの絞り込みで隠れないように
   if (j) { INFO.decks = j.decks; fillDeckSelects(); edFillLoad(); const d = j.decks.find(x => x.custom && x.name === name); if (typeof onDeckSaved === 'function') onDeckSaved(name, !!(d && d.ready)); alert(d && d.ready ? '保存しました（対戦に使えます）' : '保存しました（未完成: ' + ((d && d.reason) || '') + '）'); }
 };
 $('edDelete').onclick = async () => {

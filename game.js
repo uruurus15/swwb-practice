@@ -7,6 +7,7 @@
 
   // ---------------- デッキの保存（ブラウザの localStorage） ----------------
   const LS_KEY = 'swwb.practice.decks.v1';
+  const DEFAULT_ENV = 10009;   // 環境の記録がない自作デッキ（この機能より前に作ったもの）は、アズヴォルト・レヴナント環境として扱う
   const SETUP_KEY = 'swwb.practice.setups.v1';
   function lsGet(k, d) { try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : d; } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
@@ -14,10 +15,10 @@
   class DeckStore {
     constructor() { this.builtin = call({ op: 'decks' }); this.custom = lsGet(LS_KEY, []); }
     listing() {
-      const out = this.builtin.map((d, i) => ({ id: 'b:' + i, name: d.name, class: d.class, ready: d.ready, rot: d.rot !== false, custom: false, cards: d.cards }));
+      const out = this.builtin.map((d, i) => ({ id: 'b:' + i, name: d.name, class: d.class, ready: d.ready, rot: d.rot !== false, env: d.env, custom: false, cards: d.cards }));
       for (const d of this.custom) {
         const why = call({ op: 'check_deck', class: d.class, cards: d.cards });
-        out.push({ id: 'c:' + d.name, name: d.name, class: d.class, ready: why === null, reason: why, custom: true, cards: d.cards });
+        out.push({ id: 'c:' + d.name, name: d.name, class: d.class, ready: why === null, reason: why, custom: true, env: d.env || DEFAULT_ENV, cards: d.cards });
       }
       return out;
     }
@@ -27,13 +28,15 @@
       if (!d.ready) throw new Error('デッキ「' + d.name + '」は使えません: ' + (d.reason || '未実装のカードを含みます'));
       return d;
     }
-    save(name, cls, cards) {
+    save(name, cls, cards, env, oldName) {
       name = (name || '').trim();
       if (!name || name.length > 40) throw new Error('デッキ名は1〜40文字で入力してください');
       if (this.builtin.some(d => d.name === name)) throw new Error('組み込みデッキと同じ名前は使えません（別名で保存してください）');
       const clean = cards.filter(([, n]) => n > 0).map(([o, n]) => [+o, +n]).sort((a, b) => a[0] - b[0]);
       if (!(cls >= 0 && cls <= 7) || clean.some(([, n]) => n > 3)) throw new Error('デッキの内容が不正です');
-      this.custom = this.custom.filter(d => d.name !== name).concat([{ name, class: +cls, cards: clean }]);
+      env = +env || DEFAULT_ENV;
+      // 名前の変更: 元の名前のデッキは、新しい名前で置き換える（別名で残したいときは oldName を渡さない）
+      this.custom = this.custom.filter(d => d.name !== name && d.name !== oldName).concat([{ name, class: +cls, env, cards: clean }]);
       if (!lsSet(LS_KEY, this.custom)) throw new Error('ブラウザに保存できませんでした（プライベートモードなど）');
     }
     remove(name) { this.custom = this.custom.filter(d => d.name !== name); lsSet(LS_KEY, this.custom); }
@@ -155,10 +158,10 @@
   }
 
   // ---------------- 既存UIが使う「サーバーAPI」の代わり ----------------
-  function makeApi(cards) {
+  function makeApi(cards, envs) {
     const decks = new DeckStore();
     const game = new Game(cards, decks);
-    const info = () => ({ cards, bots: ['heuristic', 'random'], decks: decks.listing(), classes: CLASS_NAMES });
+    const info = () => ({ cards, bots: ['heuristic', 'random'], decks: decks.listing(), classes: CLASS_NAMES, envs: envs || { latest: DEFAULT_ENV, sets: {} } });
     async function api(path, body) {
       try {
         if (path.startsWith('/api/info')) return info();
@@ -170,7 +173,7 @@
           return game.state();
         }
         if (path.startsWith('/api/start')) { game.start(body); return game.state(); }
-        if (path.startsWith('/api/deck/save')) { decks.save(body.name, body.class, body.cards); return { decks: decks.listing() }; }
+        if (path.startsWith('/api/deck/save')) { decks.save(body.name, body.class, body.cards, body.env, body.old_name); return { decks: decks.listing() }; }
         if (path.startsWith('/api/deck/delete')) { decks.remove(body.name); return { decks: decks.listing() }; }
         return { error: 'unknown api ' + path };
       } catch (e) { return { error: e.message }; }

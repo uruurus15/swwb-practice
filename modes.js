@@ -111,7 +111,7 @@ function toggleDrawer(force) {
 // 選んでいたデッキが削除された・使えなくなったときは、使える先頭のデッキに戻す
 function ensureDecks() {
   INFO.decks = APP.decks.listing();   // 最新の一覧（削除・保存を反映）
-  const ready = INFO.decks.filter(d => d.ready && deckShown(d));
+  const ready = INFO.decks.filter(deckListed);
   const ok = id => id && ready.some(d => d.id === id);
   const fb = (ready.find(d => d.id === 'b:0') || ready[0]).id;
   let changed = false;
@@ -198,7 +198,7 @@ function deckOrderHtml() {
 function mullRender() {
   if (ensureDecks() || MULL.phase === 'idle') mullDeal();
   const v = q$('mullView');
-  const decks = INFO.decks.filter(d => d.ready && deckShown(d));
+  const decks = INFO.decks.filter(deckListed);
   const opt = d => '<option value="' + esc(d.id) + '"' + (d.id === MULL.deckId ? ' selected' : '') + '>' + (d.custom ? '★' : '') + INFO.classes[d.class] + '・' + esc(d.name) + '</option>';
   const handNow = MULL.phase === 'result' ? MULL.hand1 : MULL.hand0;
   const dk = deckRows(MULL.deckId, countBy(handNow), null);
@@ -406,7 +406,7 @@ function amRender(resetRuns) {
   const v = q$('amullView');
   const pl = v.querySelector('.amleft'), pr = v.querySelector('.amruns');
   const sl = pl ? pl.scrollTop : 0, sr = pr && !resetRuns ? pr.scrollTop : 0;
-  const decks = INFO.decks.filter(d => d.ready && deckShown(d));
+  const decks = INFO.decks.filter(deckListed);
   const opt = d => '<option value="' + esc(d.id) + '"' + (d.id === AM.deckId ? ' selected' : '') + '>' + (d.custom ? '★' : '') + INFO.classes[d.class] + '・' + esc(d.name) + '</option>';
   const left = '<div class="panel amleft"><div class="row"><select id="amDeck" style="flex:1;min-width:0">' + decks.map(opt).join('') + '</select><button id="amEdit">デッキ編集</button></div>' +
     '<div class="row" style="margin:6px 0"><select id="amFirst"><option value="">先攻/後攻 ランダム</option><option value="1"' + (AM.first === '1' ? ' selected' : '') + '>先攻</option><option value="0"' + (AM.first === '0' ? ' selected' : '') + '>後攻</option></select><button id="amClear" class="danger">ルールを全部消す</button></div>' +
@@ -556,7 +556,7 @@ function relatedHtml(c) {
     '<div class="rel"><img data-pop="1" data-oid="' + r.official_id + '" src="' + imgUrl(r) + '" alt="' + esc(r.name) + '" title="' + esc(r.name) + '"><div class="nm">' + esc(r.name) + '</div><div class="rb"><button data-rel="' + r.official_id + ':hand">手札</button><button data-rel="' + r.official_id + ':board"' + (r.kind === 'spell' ? ' disabled title="スペルは場に置けません"' : '') + '>場</button></div></div>').join('') + '</div>';
 }
 function deckPanelHtml(si) {
-  const decks = INFO.decks.filter(d => d.ready && deckShown(d));
+  const decks = INFO.decks.filter(deckListed);
   const opt = cur => decks.map(d => '<option value="' + esc(d.id) + '"' + (d.id === cur ? ' selected' : '') + '>' + (d.custom ? '★' : '') + INFO.classes[d.class] + '・' + esc(d.name) + '</option>').join('');
   let rows = '';
   try {
@@ -863,7 +863,7 @@ function initModes() {
   const baseRender = render; render = function () { baseRender(); if (MODE === 'play') drawerRender(); };
   const baseFill = fillDeckSelects;
   fillDeckSelects = function () { baseFill(); if (MODE === 'mull') mullRender(); if (MODE === 'amull') amRender(); if (MODE === 'setup') setupRender(); };
-  const ready = INFO.decks.filter(d => d.ready && deckShown(d));
+  const ready = INFO.decks.filter(deckListed);
   MULL.deckId = (ready.find(d => d.id === 'b:0') || ready[0]).id;
   SETUP.decks = [MULL.deckId, MULL.deckId];
   AM.deckId = MULL.deckId;
@@ -876,4 +876,10 @@ function initModes() {
     if (MODE === 'setup' && (e.key === 'Delete' || e.key === 'Backspace') && SEL && !q$('picker').classList.contains('on')) { e.preventDefault(); removeCard(SEL.w, SEL.si, SEL.i); }
   });
   setMode('mull');   // 最初はマリガン練習
+}
+
+/** 環境の絞り込みで隠れるデッキでも、いま選んでいるデッキ（マリガン練習・自動マリガン確認・盤面再現）は一覧に残す */
+function deckListed(d) {
+  if (!d.ready) return false;
+  return deckShown(d) || [typeof MULL !== 'undefined' && MULL.deckId, typeof AM !== 'undefined' && AM.deckId, ...((typeof SETUP !== 'undefined' && SETUP.decks) || [])].includes(d.id);
 }
