@@ -58,6 +58,7 @@
   .u .b { position:absolute; bottom:-4px; width:32%; aspect-ratio:1; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:clamp(13px,2.4vh,22px); color:#fff; text-shadow:0 1px 2px #000,0 0 3px #000; border:2px solid #fff6; }
   .u .atk { left:-4px; background:var(--atk); } .u .hp { right:-4px; background:var(--hp); }
   .u .b.up { color:#8dff9f; } .u .b.down { color:#ffd1d1; background:#8d2a28; }
+  .u .cd.ev { left:auto; right:-4px; transform:none; min-width:30px; background:#b8892a; border-color:#ffe08a; }
   .u .cd { position:absolute; bottom:-4px; left:50%; transform:translateX(-50%); min-width:34%; border-radius:999px; background:#6b4bd1; border:2px solid #fff6; text-align:center; font-weight:800; font-size:clamp(12px,2.2vh,20px); padding:0 6px; text-shadow:0 1px 2px #000; }
   .u .kws { position:absolute; top:3px; left:3px; display:flex; flex-direction:column; gap:2px; }
   .k-ward { --kc:#9fb4ff; } .k-storm { --kc:#ffa247; } .k-rush { --kc:#ffd84d; } .k-kill { --kc:#ff6b78; } .k-drain { --kc:#ff86d6; } .k-barrier { --kc:#62e8ff; } .k-stealth { --kc:#b9a6ff; } .k-aura { --kc:#7dffb4; } .k-intim { --kc:#ff8a4a; }
@@ -223,8 +224,8 @@
   </div>
 </div>
 <script src="engine.js?v=10"></script>
-<script src="game.js?v=11"></script>
-<script src="modes.js?v=14"></script>
+<script src="game.js?v=12"></script>
+<script src="modes.js?v=15"></script>
 <script>
 let S = null, INFO = null;
 const $ = id => document.getElementById(id);
@@ -291,7 +292,7 @@ function unitHtml(u, side, i) {
   }
   if (INS && INS.z === side && INS.i === i) cls.push('sel');
   const kws = u.kw.map(kwChip).join('');
-  const stat = u.amulet ? `<div class="cd">${u.countdown >= 0 ? u.countdown : '∞'}</div>` : `<div class="b atk ${atkCls}">${u.atk}</div><div class="b hp ${hpCls}">${u.hp}</div>`;
+  const stat = u.evidence > 0 ? `<div class="cd ev" title="証拠の数: ${u.evidence}">${u.evidence}</div>` : u.amulet ? `<div class="cd">${u.countdown >= 0 ? u.countdown : '∞'}</div>` : `<div class="b atk ${atkCls}">${u.atk}</div><div class="b hp ${hpCls}">${u.hp}</div>`;
   const evb = side === 'my' && p === 0 && L(15 + i) ? `<button class="evb" data-evo="${i}">進化</button>` : '';
   const drag = side === 'my' && p === 0 && L(10 + i) && !u.amulet ? 'draggable="true"' : '';
   return `<div class="${cls.join(' ')}" data-z="${side}" data-i="${i}" ${drag}><div class="art">${imgTag(info)}</div><div class="kws">${kws}</div>${stat}${u.super ? '<span class="evtag">超進化</span>' : (u.evolved ? '<span class="evtag">進化</span>' : '')}${evb}</div>`;
@@ -373,7 +374,7 @@ function detailHtml() {
   } else {
     const u = (INS.z === 'my' ? S.my_board : S.opp_board)[INS.i]; if (!u) return '';
     info = INFO.cards[u.card];
-    extra = u.amulet ? `カウントダウン ${u.countdown}` : `${u.atk}/${u.hp}（最大${u.max_hp}）${u.super ? ' ・超進化' : (u.evolved ? ' ・進化' : '')}`;
+    extra = u.evidence > 0 ? `証拠 ${u.evidence}` : u.amulet ? `カウントダウン ${u.countdown}` : `${u.atk}/${u.hp}（最大${u.max_hp}）${u.super ? ' ・超進化' : (u.evolved ? ' ・進化' : '')}`;
     if (u.kw.length) extra += ' ・ ' + u.kw.map(k => `<span class="kwt k-${KWCLS[k] || 'ward'}">${esc(k)}</span>`).join(' ');
     if (INS.z === 'my' && S.pending === 0) {
       if (L(15 + INS.i)) btns += `<button class="gold" data-id="${15 + INS.i}">進化</button>`;
@@ -602,8 +603,8 @@ document.addEventListener('drop', async e => {
 
 async function init() {
   $('status').textContent = '読み込み中…';
-  await SWWB.initEngine('swwb_wasm.wasm?v=11');
-  const cards = await (await fetch('data/cards.json?v=11')).json();
+  await SWWB.initEngine('swwb_wasm.wasm?v=12');
+  const cards = await (await fetch('data/cards.json?v=12')).json();
   let envs = null;
   try { envs = await (await fetch('data/envs.json?v=1')).json(); } catch (e) { /* 環境名が無くても動く */ }
   APP = SWWBGame.makeApi(cards, envs);

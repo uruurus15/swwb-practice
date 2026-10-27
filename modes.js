@@ -42,7 +42,7 @@ function unitTile(c, o) {
   (o.cls || []).forEach(x => cls.push(x));
   const atkCls = o.atk > c.atk + bonus ? 'up' : (o.atk < c.atk + bonus ? 'down' : '');
   const hpCls = o.hp < o.max_hp ? 'down' : (o.max_hp > c.hp + bonus ? 'up' : '');
-  const stat = amu ? '<div class="cd">' + o.countdown + '</div>' : '<div class="b atk ' + atkCls + '">' + o.atk + '</div><div class="b hp ' + hpCls + '">' + o.hp + '</div>';
+  const stat = (amu && isEvidence(c)) ? '<div class="cd ev" title="証拠の数">' + (o.evidence || 1) + '</div>' : amu ? '<div class="cd">' + o.countdown + '</div>' : '<div class="b atk ' + atkCls + '">' + o.atk + '</div><div class="b hp ' + hpCls + '">' + o.hp + '</div>';
   return '<div class="' + cls.join(' ') + '" ' + (o.attrs || '') + '><div class="art"><img src="' + imgUrl(c) + '" alt="' + esc(c.name) + '" draggable="false"></div><div class="kws">' + kws + '</div>' + stat + evtag + '</div>';
 }
 function handTile(c, o) {
@@ -449,12 +449,12 @@ function applyDefaults(si, force) {
   if (force) s.dirty = false;
 }
 function resetSetup() { SETUP.sides = [newSide(), newSide()]; SETUP.first = 0; SETUP.active = 0; SETUP.n = 4; SEL = null; applyDefaults(0); applyDefaults(1); }
-function defaultBoardUnit(c) { return { oid: c.official_id, atk: c.atk, hp: c.hp, max_hp: c.hp, evolved: false, super_evolved: false, can_attack: true, attacked: false, countdown: c.countdown || 0, kw: 0 }; }
+function defaultBoardUnit(c) { return { oid: c.official_id, atk: c.atk, hp: c.hp, max_hp: c.hp, evolved: false, super_evolved: false, can_attack: true, attacked: false, countdown: c.countdown || 0, evidence: isEvidence(c) ? 1 : 0, kw: 0 }; }
 function setupToEngine() {
   const side = s => ({
     leader_hp: s.leader_hp, pp: s.pp, max_pp: s.max_pp, evo_left: s.evo_left, sep: s.sep, epp: s.epp, shadows: s.shadows,
     hand: s.hand.map(h => ({ oid: h.oid, cost: h.cost == null || h.cost === '' ? undefined : +h.cost })),
-    board: s.board.map(u => ({ oid: u.oid, atk: u.atk, hp: u.hp, max_hp: u.max_hp, evolved: u.evolved, super_evolved: u.super_evolved, can_attack: u.can_attack, attacked: u.attacked, countdown: cardOf(u.oid).kind === 'amulet' ? u.countdown : undefined, kw: u.kw || 0 })),
+    board: s.board.map(u => ({ oid: u.oid, atk: u.atk, hp: u.hp, max_hp: u.max_hp, evolved: u.evolved, super_evolved: u.super_evolved, can_attack: u.can_attack, attacked: u.attacked, countdown: cardOf(u.oid).kind === 'amulet' ? u.countdown : undefined, evidence: u.evidence || undefined, kw: u.kw || 0 })),
   });
   return { first: SETUP.first, active: SETUP.active, turn: turnNo(), sides: [side(SETUP.sides[0]), side(SETUP.sides[1])] };
 }
@@ -535,7 +535,7 @@ function editorPanelHtml() {
   if (SEL.w === 'hand') {
     h += row('コスト', stepper('ed:cost', x.cost == null ? c.cost : x.cost) + (x.cost == null ? '' : '<button data-edx="resetcost">元に戻す</button>'));
   } else if (c.kind === 'amulet') {
-    h += row('カウント', stepper('ed:countdown', x.countdown));
+    h += isEvidence(c) ? row('証拠', stepper('ed:evidence', x.evidence || 1)) : row('カウント', stepper('ed:countdown', x.countdown));
     h += '<div class="erow">' + tg('can_attack', 'アクト可') + '</div>';
   } else {
     h += row('攻撃力', stepper('ed:atk', x.atk)) + row('体力', stepper('ed:hp', x.hp)) + row('最大体力', stepper('ed:max_hp', x.max_hp));
@@ -683,6 +683,7 @@ function editStep(f, d) {
   const g = getSel(); if (!g) return; const x = g.x, c = g.c;
   if (f === 'cost') { x.cost = Math.max(0, Math.min(20, (x.cost == null ? c.cost : x.cost) + d)); if (x.cost === c.cost) x.cost = null; }
   else if (f === 'countdown') x.countdown = Math.max(0, Math.min(99, x.countdown + d));
+  else if (f === 'evidence') x.evidence = Math.max(1, Math.min(99, (x.evidence || 1) + d));
   else { x[f] = Math.max(f === 'atk' ? -9 : 0, Math.min(99, x[f] + d)); if (f === 'hp' && x.hp > x.max_hp) x.max_hp = x.hp; if (f === 'max_hp' && x.hp > x.max_hp) x.hp = x.max_hp; }
   setupRender();
 }
@@ -883,3 +884,6 @@ function deckListed(d) {
   if (!d.ready) return false;
   return deckShown(d) || [typeof MULL !== 'undefined' && MULL.deckId, typeof AM !== 'undefined' && AM.deckId, ...((typeof SETUP !== 'undefined' && SETUP.decks) || [])].includes(d.id);
 }
+
+/** 証拠（種族21）のアミュレットか */
+function isEvidence(c) { return c.kind === 'amulet' && (c.tribes || []).includes(21); }

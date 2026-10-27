@@ -132,7 +132,7 @@
     }
 
     unit(u) {
-      return { card: u[0], name: this.cname(u[0]), atk: u[1], hp: u[2], max_hp: u[3], kw: kwNames(u[4]), evolved: u[5], attacks: u[6], summoned: u[7], amulet: u[8], super: u[9], countdown: u[10] };
+      return { card: u[0], name: this.cname(u[0]), atk: u[1], hp: u[2], max_hp: u[3], kw: kwNames(u[4]), evolved: u[5], attacks: u[6], summoned: u[7], amulet: u[8], super: u[9], evidence: u[11] || 0, countdown: u[10] };
     }
 
     state() {
