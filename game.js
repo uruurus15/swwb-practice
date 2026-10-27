@@ -139,7 +139,7 @@
       if (mine) o.legal_mask.forEach((ok, a) => { if (ok) actions.push({ id: a, label: this.labeler.label(o, a) }); });
       const hand = o.my_hand.map((c, i) => ({
         card: c, name: this.cname(c), cost: o.my_hand_cost[i], pay: o.my_hand_pay[i], enhanced: o.my_hand_enhanced[i],
-        kw: kwNames(o.my_hand_kw[i]), marked: !!((o.mull_mask >> i) & 1),
+        kw: kwNames(o.my_hand_kw[i]), buff_atk: o.my_hand_buff_atk[i], buff_hp: o.my_hand_buff_hp[i], marked: !!((o.mull_mask >> i) & 1),
       }));
       return {
         turn: o.turn, mine, finished: o.finished, result: o.result, pending: o.pending,

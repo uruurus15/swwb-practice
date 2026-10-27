@@ -90,6 +90,9 @@
   .h.mark { outline:3px solid var(--bad); transform:translateY(-8%); }
   .h .cost { position:absolute; top:-5px; left:-5px; width:30%; aspect-ratio:1; border-radius:50%; background:#2a8a4c; border:2px solid #fff8; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:clamp(13px,2.5vh,22px); text-shadow:0 1px 2px #000; }
   .h .cost.enhd { background:#b8892a; box-shadow:0 0 0 2px #ffe08a; }
+  .h .st { position:absolute; bottom:-4px; width:30%; aspect-ratio:1; border-radius:50%; border:2px solid #fff8; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:clamp(12px,2.3vh,20px); text-shadow:0 1px 2px #000; background:#8a5a1f; }
+  .h .st.a { left:-4px; } .h .st.hp { right:-4px; background:#a3352f; }
+  .h .st.up { background:#1f9d5a; color:#c8ffd8; box-shadow:0 0 0 2px #9dffb8; } .h .st.down { box-shadow:0 0 0 2px #ffb0b0; color:#ffd6d6; }
   .h .cost.low { background:#1f9d5a; color:#9dffb8; } .h .cost.high { background:#a3352f; color:#ffd6d6; }
   .h .enh { position:absolute; left:50%; bottom:-6px; transform:translateX(-50%); background:var(--gold); color:#35270a; font-size:11px; font-weight:800; border-radius:999px; padding:0 8px; white-space:nowrap; }
   .h .gk { position:absolute; top:3px; right:3px; font-size:10px; background:#000b; border-radius:4px; padding:0 4px; }
@@ -305,10 +308,16 @@ function handHtml(c, i) {
   if (INS && INS.z === 'hand' && INS.i === i) cls.push('sel');
   const pay = c.pay != null ? c.pay : c.cost;            // 実際に支払うコスト（エンハンス発動なら強化後）
   const costCls = pay < info.cost ? 'low' : (pay > info.cost ? 'high' : '');
+  let stats = '';
+  if (info.kind === 'follower') {
+    const ba = c.buff_atk || 0, bh = c.buff_hp || 0, A = info.atk + ba, H = info.hp + bh;
+    const cl = b => b > 0 ? ' up' : (b < 0 ? ' down' : '');
+    stats = `<span class="st a${cl(ba)}" title="攻撃力${ba ? '（元 ' + info.atk + '）' : ''}">${A}</span><span class="st hp${cl(bh)}" title="体力${bh ? '（元 ' + info.hp + '）' : ''}">${H}</span>`;
+  }
   const enh = c.enhanced ? `<span class="enh">エンハンス</span>` : '';
   const gk = c.kw.length ? `<span class="gk">${c.kw.map(k => KWAB[k] || k[0]).join('')}</span>` : '';
   const drag = p === 0 && L(1 + i) ? 'draggable="true"' : '';
-  return `<div class="${cls.join(' ')}" data-z="hand" data-i="${i}" ${drag}>${imgTag(info)}<span class="cost ${costCls}${c.enhanced ? ' enhd' : ''}" title="支払うコスト${pay !== info.cost ? '（元 ' + info.cost + '）' : ''}">${pay}</span>${gk}${enh}</div>`;
+  return `<div class="${cls.join(' ')}" data-z="hand" data-i="${i}" ${drag}>${imgTag(info)}<span class="cost ${costCls}${c.enhanced ? ' enhd' : ''}" title="支払うコスト${pay !== info.cost ? '（元 ' + info.cost + '）' : ''}">${pay}</span>${stats}${gk}${enh}</div>`;
 }
 
 function promptHtml() {
